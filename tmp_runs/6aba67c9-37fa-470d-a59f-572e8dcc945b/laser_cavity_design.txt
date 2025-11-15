@@ -1,0 +1,12 @@
+Laser Cavity Design Parameters:
+Mirror 1: Flat input coupler (ROC = inf m), reflectivity = 0.99
+Mirror 2: Concave output coupler (ROC = 0.15 m), reflectivity = 0.9974
+Distances (m): Input Coupler to Lens = 0.2500, Lens to Output Coupler = -0.0450
+Crystal thickness (m): 0.005
+Lens focal length (m): 0.1
+Beam waist in crystal (m): 1.000000e-01
+Stability margin: -0.299960
+Mode volume (m^3): 1.570796e-04
+Pump volume (m^3): 3.926991e-09
+Mode-pump overlap ratio: 40000.000000
+Expected diffraction loss: 9.999861e-01

@@ -1,0 +1,23 @@
+Cavity topology: plano-concave (IC flat, OC concave)
+Wavelength_m = 1.064000000e-06
+ROC_OC_m = 0.150000
+Chosen_cavity_length_L_m = 0.075000
+g1 = 1.000000
+g2 = 0.500000
+g_product = 0.500000
+Rayleigh_range_air_m = 7.500000000e-02
+waist_w0_air_m = 1.593773162e-04
+beam_radius_at_OC_air_m = 2.253935621e-04
+Geometry (distances along cavity axis):
+  M1(IC flat) -> crystal_front_m = 0.000000
+  crystal_thickness_m = 0.005000
+  crystal_back -> M2(OC concave) m = 0.070000
+geometry_valid = True
+R_IC = 0.990000; T_IC = 0.010000
+R_OC = 0.997400; T_OC = 0.002600
+waist_w0_in_crystal_m = requires_parameter (n_crystal_1064)
+diffraction_loss_per_roundtrip = requires_parameter (mirror_aperture_radius_m, crystal_aperture_radius_m)
+circulating_power_W = requires_parameter (gain/emission, absorption, overlap, intrinsic_roundtrip_loss)
+slope_efficiency = requires_parameter (quantum_efficiency, output_coupling, losses)
+thermal_lens_f_m = requires_parameter (absorption, dn/dT, k, alpha, pump distribution)
+pump_wavelength_m = requires_parameter (for pump spot through lens)

@@ -1,0 +1,6 @@
+openrouter_api.txt
+experiments/*
+experiment_archive/*
+images/*
+.DS_Store
+__pycache__

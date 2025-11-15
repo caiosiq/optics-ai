@@ -1,0 +1,39 @@
+Cavity Design (Nd:YAG 1064 nm)
+--------------------------------
+Mirror types:
+ - Input coupler: flat (R=inf), R=0.99
+ - Output coupler: concave, ROC=0.15 m, R=0.9974
+Intracavity lens: thin lens, f=0.1 m
+Crystal: Nd:YAG, n=1.82, thickness=0.005 m, doping=1%
+
+Distances (left to right):
+ - M1 (flat) to crystal front (L1): 0.010000 m
+ - Crystal thickness: 0.005000 m (fixed)
+ - Crystal back to lens (L2): 0.005000 m
+ - Lens to M2 (concave) (L3): 0.020000 m
+
+Beam parameters at 1064 nm:
+ - Beam radius at M1 (w_M1): nan m
+ - Beam radius at crystal center (w_cr_center): nan m
+ - Beam radius at M2 (w_M2): nan m
+
+Beam waist location and size inside crystal (approx):
+ - Approximated by w at crystal center (w_cr_center).
+
+Stability:
+ - Half-trace (m_trace): -0.053615
+ - Stability margin: 0.946385
+
+Mode-pump overlap (approx):
+ - Pump radius at crystal center assumed: 5.000000e-04 m
+ - Overlap factor (overlap_pump_mode): 0.000000
+
+Expected diffraction (clipping) losses (Gaussian, per pass unless noted):
+ - Mirror apertures: requires_parameter
+ - Crystal aperture: requires_parameter
+ - Total diffraction loss per round trip: requires_parameter
+
+Notes:
+ - Geometry chosen by maximizing product of stability margin and pump-mode overlap, with soft penalty on extreme OC spot sizes.
+ - Pump overlap uses a simple radius-based approximation at the crystal center.
+ - Provide mirror_aperture_radius_m and crystal_aperture_radius_m in the script to compute diffraction losses.
