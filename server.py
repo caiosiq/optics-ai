@@ -108,7 +108,7 @@ def _response_json_schema() -> Dict[str, Any]:
     }
 
 
-def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, retries: int = 1, reasoning_effort: str = "low", temperature: float = 0.2) -> Dict[str, Any]:
+def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, retries: int = 1, reasoning_effort: str = "low", temperature: float = 0.2) -> tuple[Dict[str, Any], Dict[str, Any]]:
     api_key = API_KEY_PATH.read_text().strip()
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -126,6 +126,9 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
     }
     last_out = None
     last_content = None
+    finish_reason = None
+    attempts = 0
+    llm_start = time.perf_counter()
     for attempt in range(max(1, retries)):
         r = requests.post(url, headers=headers, json=payload, timeout=60)
         out = r.json()
@@ -137,13 +140,17 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
         content = message.get("content")
         last_content = content
         if isinstance(content, dict):
-            return content
+            llm_ms = int((time.perf_counter() - llm_start) * 1000)
+            metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
+            return content, metrics
         if isinstance(content, str):
             s = content.strip()
             try:
                 obj = json.loads(s)
                 if isinstance(obj, dict):
-                    return obj
+                    llm_ms = int((time.perf_counter() - llm_start) * 1000)
+                    metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
+                    return obj, metrics
             except Exception:
                 pass
         # On failure or truncation, compress context and nudge the model
@@ -155,6 +162,7 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
         payload["messages"] = messages
         if finish_reason == "length":
             payload["max_tokens"] = min(4000, max_tokens + 1000)
+        attempts += 1
     raise LLMJSONError("Model did not return valid JSON per schema", raw_out=last_out, raw_content=last_content)
 
 
@@ -250,18 +258,23 @@ def chat():
     ctx_message = [{"role": "system", "content": ("Previous run context:\n" + ctx_block)}] if ctx_block else []
     messages = [{"role": "system", "content": system_prompt}] + history + ctx_message + [{"role": "user", "content": user_text}]
     try:
+        t0 = time.perf_counter()
         _append_history(conv_id, "user", user_text)
-        resp = call_openrouter(
+        # Build prep time
+        prep_ms = int((time.perf_counter() - t0) * 1000)
+        resp, call_metrics = call_openrouter(
             messages,
             model,
-            max_tokens=int(cfg.get("max_tokens", 2000) or 2000),
+            max_tokens=min(int(cfg.get("max_tokens", 2000) or 2000), 50000),
             retries=2,
             reasoning_effort=str(cfg.get("reasoning_effort", "low")),
             temperature=float(cfg.get("temperature", 0.2) or 0.2),
         )
         assistant_text = resp.get("text") or "Provided structured output"
         _append_history(conv_id, "assistant", assistant_text)
-        return jsonify({"ok": True, "response": resp})
+        post_ms = int((time.perf_counter() - t0) * 1000) - prep_ms - call_metrics.get("llm_ms", 0)
+        metrics = {"prep_ms": prep_ms, **call_metrics, "post_ms": max(post_ms, 0), "timestamp": int(time.time()*1000)}
+        return jsonify({"ok": True, "response": resp, "metrics": metrics})
     except Exception as e:
         if isinstance(e, LLMJSONError):
             return jsonify({"ok": False, "error": str(e), "raw_response": e.raw_out, "raw_message": e.raw_content}), 400
@@ -274,6 +287,7 @@ def run_code():
     code = (data or {}).get("code", "")
     code_meta = (data or {}).get("code_meta")
     import subprocess, uuid, os, base64, io
+    import re
     run_dir = APP_DIR / "tmp_runs" / str(uuid.uuid4())
     run_dir.mkdir(parents=True, exist_ok=True)
     instrument = (
@@ -313,11 +327,40 @@ def run_code():
         for p in run_dir.iterdir():
             if p.is_file():
                 files.append(str(p))
+        error_line = None
+        error_user_line = None
+        error_type = None
+        error_msg = None
+        if err:
+            m = re.search(r"File \"<string>\", line (\d+)", err)
+            if m:
+                try:
+                    error_line = int(m.group(1))
+                except Exception:
+                    error_line = None
+            last = ""
+            for ln in err.splitlines()[::-1]:
+                ln = ln.strip()
+                if ln:
+                    last = ln
+                    break
+            if last:
+                # e.g., IndentationError: unexpected indent
+                parts = last.split(":", 1)
+                error_type = parts[0].strip()
+                error_msg = parts[1].strip() if len(parts) > 1 else ""
+            inst_lines = instrument.count("\n") + 1
+            if error_line and error_line > inst_lines:
+                error_user_line = error_line - inst_lines
         resp = {
             "ok": r.returncode == 0,
             "output": "\n".join(text_out) + ("\n" + err if err else ""),
             "images": images,
             "files": files,
+            "error": (error_type + (": " + error_msg if error_msg else "")) if r.returncode != 0 else None,
+            "error_line": error_line,
+            "error_user_line": error_user_line,
+            "error_type": error_type,
         }
         return jsonify(resp)
     except Exception as e:
@@ -354,7 +397,8 @@ def test_response():
             "wavelength_nm": 532
         }
     }
-    return jsonify({"ok": True, "response": sample})
+    metrics = {"prep_ms": 5, "llm_ms": 42, "post_ms": 3, "retries": 1, "timestamp": int(time.time()*1000)}
+    return jsonify({"ok": True, "response": sample, "metrics": metrics})
 
 
 if __name__ == "__main__":

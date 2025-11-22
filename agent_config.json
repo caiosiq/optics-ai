@@ -1,5 +1,4 @@
 {
-  "model": "openai/gpt-4.1-mini",
   "context_window_messages": 5,
   "max_message_chars": 800,
   "session_constraints_enabled": true,

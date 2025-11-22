@@ -14,12 +14,24 @@ button:hover { background: linear-gradient(180deg, #66fcf1, #4ee8de); }
 .bubble-user { margin-left: auto; background: linear-gradient(180deg, #17343a, #122b30); border-color: #45a29e; }
 .bubble-agent { margin-right: auto; }
 .tag { display: inline-block; font-size: 12px; font-weight: 600; color: #0b0c10; background: #66fcf1; border-radius: 999px; padding: 2px 8px; margin-bottom: 6px; }
+.tag-large { font-size: 14px; padding: 3px 10px; }
+.output-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.output-actions { display: flex; gap: 8px; align-items: center; }
+.muted { color: #9db5b7; font-size: 12px; }
 .code { white-space: pre; font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: linear-gradient(180deg, #0c1218, #0a0f14); color: #cfe9ea; padding: 12px; border-radius: 10px; border: 1px solid #2a3b45; box-shadow: inset 0 0 0 1px rgba(102,252,241,0.06); }
 .code { max-width: 100%; max-height: 420px; overflow: auto; overflow-x: auto; line-height: 1.5; font-size: 13px; }
 .code::-webkit-scrollbar { width: 10px; height: 10px; }
 .code::-webkit-scrollbar-track { background: #0b0c10; }
 .code::-webkit-scrollbar-thumb { background: #2a3b45; border-radius: 6px; }
 .code::-webkit-scrollbar-thumb:hover { background: #45a29e; }
+.code-block { background: linear-gradient(180deg, #0c1218, #0a0f14); border: 1px solid #2a3b45; box-shadow: inset 0 0 0 1px rgba(102,252,241,0.06); border-radius: 10px; max-width: 100%; max-height: 420px; overflow: auto; }
+.code-rows { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 1.5; color: #cfe9ea; }
+.code-row { display: grid; grid-template-columns: 48px 1fr; gap: 8px; padding: 2px 6px; }
+.code-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
+.code-row:nth-child(even) { background: rgba(255,255,255,0.04); }
+.code-row:hover { background: rgba(102,252,241,0.08); }
+.code-ln { color: #8fb7b9; text-align: right; padding-right: 6px; }
+.code-txt { white-space: pre; }
 .textdoc { white-space: pre-wrap; font-family: 'Merriweather', Georgia, 'Times New Roman', serif; background: linear-gradient(180deg, rgba(25,32,40,0.7), rgba(21,28,36,0.7)); color: #e6f7f8; padding: 14px; border-radius: 10px; border: 1px solid #2a3b45; box-shadow: inset 0 0 0 1px rgba(102,252,241,0.06); }
 .textdoc { max-width: 100%; max-height: 420px; overflow: auto; line-height: 1.6; font-size: 14px; }
 .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
