@@ -17,8 +17,13 @@ A fast local web UI for assembling and studying optical systems with an LLM. It 
 - `static/index.html`: UI page, header, model modal, context bar, chat
 - `static/app.js`: UI logic, send/receive, run code, previews, context chips
 - `static/styles.css`: Theme, bubbles, code/text styles, modal, context bar
-- `agent_config.json`: Agent model, guard rails, specialist context, performance settings
+- `agent_config.json`: Agent model and performance settings; agent-specific role and context
 - `openrouter_api.txt`: API key for OpenRouter (do not commit secrets)
+- `mcp/`: Local MCP-like layer
+  - `ui_output_format.json`: JSON Schema for responses
+  - `ui_output_examples.json`: Examples of valid responses
+  - `optics_guardrails.md`: Long-lived guard rails and behavior rules
+  - `validator.py`: Loads resources and validates candidate outputs
 
 ## Response Schema
 The agent must return a single JSON object with these keys:
@@ -32,14 +37,11 @@ Strict validation is applied via `response_format: json_schema`. The schema ensu
 - `json_file` includes `system`, `elements`, `spacing_mm`, `wavelength_nm`
 - `elements` each include `type`, `material`, `radius_front_mm`, `radius_back_mm`, `thickness_mm`
 
-## Guard Rails and Optics Context
-Defined in `agent_config.json` and injected by `server.py`:
-- JSON-only responses, no markdown or extra prose
-- No invented numeric values; numbers must be computed in `code` and printed
-- If parameters are missing, ask in `text` and avoid numeric claims
-- Codes must run as-is: do not use command-line args (`argparse`, `sys.argv`) or `input()`
-- Prefer Python unless the user requests otherwise
-- Use SI units or clearly state units
+## Guard Rails and Agent Context
+- Guard rails live in `mcp/optics_guardrails.md` and are referenced by a thin system prompt.
+- Agent-specific role and context live in `agent_config.json` under:
+  - `agent_role`: e.g., "Optics Chat Agent"
+  - `agent_context`: concise lines describing this agent’s domain and output preferences
 
 ## Running Locally
 1. Install dependencies: `pip install flask requests matplotlib`
@@ -74,17 +76,17 @@ Defined in `agent_config.json` and injected by `server.py`:
 - Session constraints extractor gathers concise parameter lines from recent user messages
 - Additional run context is injected via `extra_context` (UI-provided)
 - All additions are clipped by `max_context_addition_chars` to cap token usage
+ - The system prompt is thin and references MCP resources rather than inlining schema and guard rails
 
 ## Configuration (`agent_config.json`)
-- `model`: default model if not set by UI
-- `context_window_messages`: number of prior messages to include
-- `max_message_chars`: characters per message when clipping
-- `session_constraints_enabled`: enable concise constraints injection
-- `max_constraints`: max lines extracted for constraints
-- `max_context_addition_chars`: clip length for extra run context
-- `max_tokens`: token budget per request (server may raise on truncation retries)
-- `reasoning_effort`: provider hint to reduce reasoning verbosity (e.g., `low`)
-- `temperature`: generation determinism (lower is more concise)
+- `default_model`, `temperature`, `reasoning_effort`, `max_tokens`
+- `context_window_messages`, `max_message_chars`
+- `session_constraints_enabled`, `max_constraints`, `max_context_addition_chars`
+- `agent_role`, `agent_context`
+
+### Model precedence
+- The UI selection takes priority and is sent with each request.
+- `default_model` is only used as a fallback when the UI does not supply a model (e.g., headless calls or tests).
 
 ## Debugging
 - If the model returns invalid JSON, the server retries with compressed context and a clarifying system nudge

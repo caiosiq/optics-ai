@@ -5,3 +5,4 @@ images/*
 .DS_Store
 __pycache__
 tmp_runs/*
+test_llm_speed/openrouter_api.txt

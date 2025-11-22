@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 from flask import Flask, request, send_from_directory, jsonify
 import requests
+from mcp import validator as mcp_validator
 
 APP_DIR = pathlib.Path(__file__).parent.resolve()
 STATIC_DIR = APP_DIR / "static"
@@ -28,84 +29,23 @@ def load_config() -> Dict[str, Any]:
 
 
 def build_system_prompt(cfg: Dict[str, Any]) -> str:
-    pre = cfg.get("pre_context", [])
-    specialist = cfg.get("specialist_context", [])
-    schema_rules = [
-        "You MUST respond as a single JSON object with up to three keys: 'text', 'code', 'json_file'.",
-        "Only include keys that are relevant to the user's request.",
-        "'text' is a short natural language reply.",
-        "'code' is executable snippet related to optics work; prefer Python unless the user requests otherwise.",
-        "'json_file' is structured data for optical system assemblies or configurations.",
-        "Optionally include 'code_meta' with 'files_expected' listing any files the code will write.",
-        "Do NOT invent numeric values. Any numeric outputs MUST be computed inside 'code' and printed.",
-        "If parameters are missing, ask for them in 'text' and avoid numeric outputs.",
-        "If 'text' mentions numeric results, ensure they match values printed in 'code' and use SI units.",
-        "Code MUST run as-is without command-line arguments or interactive input; do not use argparse(), input(), or sys.argv. If parameters are needed, request them in 'text' and include safe defaults in 'code'.",
-        "Return only the JSON object; do not include chain-of-thought, reasoning text, or extra keys.",
-        "Never output markdown or additional wrapping. No prose outside the JSON object.",
-        "Be concise and fast."
-    ]
-    lines = ["Guard Rails:"] + pre + ["\nOptics Specialist Context:"] + specialist + ["\nResponse Schema:"] + schema_rules
-    return "\n".join(lines)
+    role = cfg.get("agent_role", "Optics Chat Agent")
+    ctx_lines = cfg.get("agent_context", [])
+    base = (
+        f"You are the {role}. Answer optics questions and propose Python code and JSON files when useful.\n"
+        "Your responses MUST follow the UI output format in the 'ui-output-format' resource.\n"
+        "You MUST obey the rules in the 'optics-guardrails' resource.\n"
+        "Always return a single JSON object with keys: text, code, code_meta, json_file (null allowed), no extra keys.\n"
+        "After drafting a response, the system may validate it; if errors are reported, correct them."
+    )
+    if ctx_lines:
+        base += "\nAgent Context:\n" + "\n".join(ctx_lines)
+    return base
 
 
 def _response_json_schema() -> Dict[str, Any]:
-    element_schema = {
-        "type": "object",
-        "properties": {
-            "type": {"type": "string"},
-            "material": {"type": "string"},
-            "radius_front_mm": {"type": "number"},
-            "radius_back_mm": {"type": "number"},
-            "thickness_mm": {"type": "number"}
-        },
-        "required": [
-            "type",
-            "material",
-            "radius_front_mm",
-            "radius_back_mm",
-            "thickness_mm"
-        ],
-        "additionalProperties": False
-    }
-
-    json_file_schema = {
-        "type": "object",
-        "properties": {
-            "system": {"type": "string"},
-            "elements": {"type": "array", "items": element_schema},
-            "spacing_mm": {"type": "array", "items": {"type": "number"}},
-            "wavelength_nm": {"type": "number"}
-        },
-        "required": ["system", "elements", "spacing_mm", "wavelength_nm"],
-        "additionalProperties": False
-    }
-
-    return {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "text": {"type": ["string", "null"]},
-            "code": {"type": ["string", "null"]},
-            "code_meta": {
-                "anyOf": [
-                    {
-                        "type": "object",
-                        "properties": {
-                            "files_expected": {"type": "array", "items": {"type": "string"}}
-                        },
-                        "required": ["files_expected"],
-                        "additionalProperties": False
-                    },
-                    {"type": "null"}
-                ]
-            },
-            "json_file": {
-                "anyOf": [ json_file_schema, {"type": "null"} ]
-            }
-        },
-        "required": ["text", "code", "code_meta", "json_file"]
-    }
+    # Load schema from MCP resource rather than building inline.
+    return mcp_validator.load_schema()
 
 
 def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, retries: int = 1, reasoning_effort: str = "low", temperature: float = 0.2) -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -130,7 +70,7 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
     attempts = 0
     llm_start = time.perf_counter()
     for attempt in range(max(1, retries)):
-        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        r = requests.post(url, headers=headers, json=payload, timeout=600)
         out = r.json()
         last_out = out
         if "choices" not in out or not out["choices"]:
@@ -140,17 +80,33 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
         content = message.get("content")
         last_content = content
         if isinstance(content, dict):
-            llm_ms = int((time.perf_counter() - llm_start) * 1000)
-            metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
-            return content, metrics
+            # Validate via MCP tool
+            val = mcp_validator.validate_ui_output(content)
+            if val.get("ok"):
+                llm_ms = int((time.perf_counter() - llm_start) * 1000)
+                metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
+                return content, metrics
+            else:
+                # Ask model to repair using concise errors
+                messages = messages + [{"role": "system", "content": "Validation errors: " + "; ".join(val.get("errors", [])) + ". Return a corrected JSON per schema only."}]
+                payload["messages"] = messages
+                attempts += 1
+                continue
         if isinstance(content, str):
             s = content.strip()
             try:
                 obj = json.loads(s)
                 if isinstance(obj, dict):
-                    llm_ms = int((time.perf_counter() - llm_start) * 1000)
-                    metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
-                    return obj, metrics
+                    val = mcp_validator.validate_ui_output(obj)
+                    if val.get("ok"):
+                        llm_ms = int((time.perf_counter() - llm_start) * 1000)
+                        metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
+                        return obj, metrics
+                    else:
+                        messages = messages + [{"role": "system", "content": "Validation errors: " + "; ".join(val.get("errors", [])) + ". Return a corrected JSON per schema only."}]
+                        payload["messages"] = messages
+                        attempts += 1
+                        continue
             except Exception:
                 pass
         # On failure or truncation, compress context and nudge the model
@@ -232,7 +188,7 @@ def chat():
     cfg = load_config()
     data = request.get_json(force=True)
     user_text = (data or {}).get("message", "")
-    model = (data or {}).get("model") or cfg.get("model", "openai/gpt-4.1-mini")
+    model = (data or {}).get("model") or cfg.get("default_model", "openai/gpt-4.1-mini")
     conv_id = (data or {}).get("conversation_id") or "default"
     limit_msgs = int(cfg.get("context_window_messages", 5) or 0)
     clip_chars = int(cfg.get("max_message_chars", 800) or 800)
@@ -312,7 +268,7 @@ def run_code():
             cwd=str(run_dir),
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=600,
         )
         out = r.stdout or ""
         err = r.stderr or ""

@@ -10,6 +10,8 @@ let selectedModel = null
 let conversationId = null
 const contextBarEl = document.getElementById('contextBar')
 let contextAdds = []
+const warningBarEl = document.getElementById('warningBar')
+const warnMinutes = 3
 
 function appendBlock(label, content) {
   const wrap = document.createElement('div')
@@ -138,11 +140,12 @@ sendBtn.onclick = async () => {
   inputEl.value = ''
   const loading = showLoading()
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort('timeout'), 45000)
+  const warnTimer = setTimeout(() => showWarn(ctrl), warnMinutes * 60 * 1000)
   try {
     const r = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: v, model: selectedModel, conversation_id: conversationId }), signal: ctrl.signal })
     const j = await r.json()
     if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
+    hideWarn()
     if (!j.ok) {
       appendBlock('error', j.error || 'error')
       if (j.raw_message) appendDebug('raw_message', j.raw_message)
@@ -153,9 +156,10 @@ sendBtn.onclick = async () => {
     if (contextBarEl) { contextAdds = []; renderContextBar() }
   } catch (e) {
     if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
+    hideWarn()
     appendBlock('error', String(e || 'request failed'))
   } finally {
-    clearTimeout(timer)
+    clearTimeout(warnTimer)
   }
 }
 
@@ -163,7 +167,6 @@ testBtn.onclick = async () => {
   if (!selectedModel) showModal()
   const loading = showLoading()
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort('timeout'), 15000)
   try {
     const r = await fetch('/test_response', { signal: ctrl.signal })
     const j = await r.json()
@@ -173,8 +176,6 @@ testBtn.onclick = async () => {
   } catch (e) {
     if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
     appendBlock('error', String(e || 'request failed'))
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -530,6 +531,32 @@ function renderContextBar() {
     chip.appendChild(x)
     contextBarEl.appendChild(chip)
   })
+}
+
+function showWarn(ctrl) {
+  if (!warningBarEl) return
+  warningBarEl.style.display = 'flex'
+  warningBarEl.innerHTML = ''
+  const msg = document.createElement('div')
+  msg.textContent = `The LLM has been thinking for more than ${warnMinutes} minutes. Do you wish to stop generation?`
+  const actions = document.createElement('div')
+  actions.className = 'warn-actions'
+  const stop = document.createElement('button')
+  stop.textContent = 'Stop'
+  stop.onclick = () => { try { ctrl.abort('user cancel') } catch {} hideWarn() }
+  const continueBtn = document.createElement('button')
+  continueBtn.textContent = 'Continue waiting'
+  continueBtn.onclick = () => hideWarn()
+  actions.appendChild(stop)
+  actions.appendChild(continueBtn)
+  warningBarEl.appendChild(msg)
+  warningBarEl.appendChild(actions)
+}
+
+function hideWarn() {
+  if (!warningBarEl) return
+  warningBarEl.style.display = 'none'
+  warningBarEl.innerHTML = ''
 }
 
 function basename(p) {

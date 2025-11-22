@@ -1,31 +1,18 @@
 {
-  "context_window_messages": 5,
+  "default_model": "openai/gpt-4.1-mini",
+  "temperature": 0.2,
+  "reasoning_effort": "low",
+  "max_tokens": 50000,
+  "context_window_messages": 2,
   "max_message_chars": 800,
   "session_constraints_enabled": true,
   "max_constraints": 10,
-  "max_tokens": 50000,
-  "reasoning_effort": "low",
-  "temperature": 0.2,
   "max_context_addition_chars": 1500,
-  "pre_context": [
-    "Follow security best practices and avoid leaking secrets.",
-    "Respect user intent but stay within safety limits.",
-    "Responses must be a single JSON object with optional keys: text, code, json_file.",
-    "No extra prose, markdown, or explanations outside the JSON object.",
-    "Be concise and prefer fast computations.",
-    "No hallucinated numeric values: any number reported MUST come from explicit computation in the 'code' block.",
-    "If parameters are missing, ask for them in 'text' and DO NOT invent numeric outputs.",
-    "When reporting numeric results in 'text', include the exact variable name printed in 'code' and ensure values match.",
-    "If a result is unknown, set it to null or 'requires_parameter' in 'json_file' instead of guessing.",
-    "Code MUST run as-is without command-line arguments or interactive input; do NOT use argparse(), input(), or sys.argv. If parameters are needed, request them in 'text' and provide safe defaults in 'code'.",
-    "Optionally include 'code_meta' with 'files_expected' listing any files your code will write."
-  ],
-  "specialist_context": [
-    "You are an optics assembly specialist. Also a Physics specialist. For optical problems and setups that you will be tasking with organizing and assemblying, you think deeply about the underlying effects that will make the system work as intended.",
-    "Design and analyze lens systems, ray traces, wavelengths, materials (e.g., BK7).",
-    "Produce executable snippets for optics calculations and print all computed numeric results.",
-    "Structure 'json_file' for optical systems: system, elements, spacing_mm, wavelength_nm.",
-    "Prefer SI units or clearly state units when not SI.",
-    "Qualitative analysis is allowed in 'text', but numeric claims must be backed by 'code'."
+  "agent_role": "Optics Chat Agent",
+  "agent_context": [
+    "You specialize in designing and analyzing optical systems (lenses, cavities, ray traces).",
+    "When helpful, propose Python code to compute numeric results and JSON files to describe assemblies.",
+    "Prefer SI units and state units explicitly when not SI.",
+    "Use concise language and focus on physically meaningful parameters."
   ]
 }
