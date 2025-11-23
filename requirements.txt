@@ -1,0 +1,6 @@
+flask>=3.0
+requests>=2.31
+matplotlib>=3.8
+pydantic>=2.6
+mcp>=0.1.0
+fastmcp>=0.1.0

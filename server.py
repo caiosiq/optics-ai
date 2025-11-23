@@ -5,7 +5,9 @@ from typing import Any, Dict
 
 from flask import Flask, request, send_from_directory, jsonify
 import requests
-from mcp import validator as mcp_validator
+import subprocess
+import sys
+from fastmcp import Client
 
 APP_DIR = pathlib.Path(__file__).parent.resolve()
 STATIC_DIR = APP_DIR / "static"
@@ -14,6 +16,15 @@ API_KEY_PATH = APP_DIR / "openrouter_api.txt"
 
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 CONVERSATIONS: dict[str, list[dict]] = {}
+
+# Start MCP client early so it's available when chat handler runs
+MCP_CLIENT = None
+
+def start_mcp_server():
+    global MCP_CLIENT
+    if MCP_CLIENT is None:
+        script_path = str((APP_DIR / "optics_mcp" / "optics_server.py").resolve())
+        MCP_CLIENT = Client(script_path)
 
 class LLMJSONError(Exception):
     def __init__(self, message: str, raw_out: dict | None = None, raw_content: str | dict | None = None):
@@ -33,19 +44,71 @@ def build_system_prompt(cfg: Dict[str, Any]) -> str:
     ctx_lines = cfg.get("agent_context", [])
     base = (
         f"You are the {role}. Answer optics questions and propose Python code and JSON files when useful.\n"
-        "Your responses MUST follow the UI output format in the 'ui-output-format' resource.\n"
-        "You MUST obey the rules in the 'optics-guardrails' resource.\n"
+        "Your responses MUST follow the UI output format in the 'resource://ui-output-format' resource.\n"
+        "You MUST obey the rules in the 'resource://optics-guardrails' resource.\n"
         "Always return a single JSON object with keys: text, code, code_meta, json_file (null allowed), no extra keys.\n"
         "After drafting a response, the system may validate it; if errors are reported, correct them."
     )
+    base += "\nFiles may be provided via the MCP resource 'file://{path}'; request reading only if needed."
     if ctx_lines:
         base += "\nAgent Context:\n" + "\n".join(ctx_lines)
     return base
 
 
 def _response_json_schema() -> Dict[str, Any]:
-    # Load schema from MCP resource rather than building inline.
-    return mcp_validator.load_schema()
+    try:
+        # Use the same Pydantic model as the MCP server for consistency
+        from optics_mcp.optics_server import OpticsAgentResponse
+        return OpticsAgentResponse.model_json_schema()
+    except Exception:
+        # Fallback: minimal valid JSON Schema when import fails
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "text": {"type": ["string", "null"]},
+                "code": {"type": ["string", "null"]},
+                "code_meta": {
+                    "type": ["object", "null"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "files_expected": {"type": "array", "items": {"type": "string"}}
+                    }
+                },
+                "json_file": {
+                    "type": ["object", "null"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "system": {"type": "string"},
+                        "elements": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "type": {"type": "string"},
+                                    "material": {"type": "string"},
+                                    "radius_front_mm": {"type": "number"},
+                                    "radius_back_mm": {"type": "number"},
+                                    "thickness_mm": {"type": "number"}
+                                },
+                                "required": [
+                                    "type",
+                                    "material",
+                                    "radius_front_mm",
+                                    "radius_back_mm",
+                                    "thickness_mm"
+                                ]
+                            }
+                        },
+                        "spacing_mm": {"type": "array", "items": {"type": "number"}},
+                        "wavelength_nm": {"type": "number"}
+                    },
+                    "required": ["system", "elements", "spacing_mm", "wavelength_nm"]
+                }
+            },
+            "required": ["text", "code", "code_meta", "json_file"]
+        }
 
 
 def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, retries: int = 1, reasoning_effort: str = "low", temperature: float = 0.2) -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -59,11 +122,12 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
         "max_tokens": max_tokens,
         "response_format": {
             "type": "json_schema",
-            "json_schema": {"name": "OpticsAgentResponse", "schema": schema, "strict": True}
+            "json_schema": {"name": "OpticsAgentResponse", "schema": schema, "strict": False}
         },
         "reasoning": {"effort": reasoning_effort},
         "temperature": temperature,
     }
+    # No tools included; rely on response_format + local Pydantic validation for speed
     last_out = None
     last_content = None
     finish_reason = None
@@ -75,20 +139,21 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
         last_out = out
         if "choices" not in out or not out["choices"]:
             raise RuntimeError(f"Invalid LLM response: {json.dumps(out)[:500]}")
-        message = out["choices"][0]["message"]
+        choice = out["choices"][0]
+        message = choice["message"]
         finish_reason = out["choices"][0].get("finish_reason")
         content = message.get("content")
+        # No tool call handling in this fast path
         last_content = content
         if isinstance(content, dict):
-            # Validate via MCP tool
-            val = mcp_validator.validate_ui_output(content)
-            if val.get("ok"):
+            try:
+                from optics_mcp.optics_server import OpticsAgentResponse
+                OpticsAgentResponse.model_validate(content)
                 llm_ms = int((time.perf_counter() - llm_start) * 1000)
                 metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
                 return content, metrics
-            else:
-                # Ask model to repair using concise errors
-                messages = messages + [{"role": "system", "content": "Validation errors: " + "; ".join(val.get("errors", [])) + ". Return a corrected JSON per schema only."}]
+            except Exception as ve:
+                messages = messages + [{"role": "system", "content": f"Validation error: {str(ve)}. Return a corrected JSON per schema only."}]
                 payload["messages"] = messages
                 attempts += 1
                 continue
@@ -97,13 +162,14 @@ def call_openrouter(messages: list[dict], model: str, max_tokens: int = 2000, re
             try:
                 obj = json.loads(s)
                 if isinstance(obj, dict):
-                    val = mcp_validator.validate_ui_output(obj)
-                    if val.get("ok"):
+                    try:
+                        from optics_mcp.optics_server import OpticsAgentResponse
+                        OpticsAgentResponse.model_validate(obj)
                         llm_ms = int((time.perf_counter() - llm_start) * 1000)
                         metrics = {"llm_ms": llm_ms, "retries": attempts + 1, "finish_reason": finish_reason, "usage": out.get("usage")}
                         return obj, metrics
-                    else:
-                        messages = messages + [{"role": "system", "content": "Validation errors: " + "; ".join(val.get("errors", [])) + ". Return a corrected JSON per schema only."}]
+                    except Exception as ve:
+                        messages = messages + [{"role": "system", "content": f"Validation error: {str(ve)}. Return a corrected JSON per schema only."}]
                         payload["messages"] = messages
                         attempts += 1
                         continue
@@ -186,6 +252,7 @@ def download():
 @app.route("/chat", methods=["POST"])
 def chat():
     cfg = load_config()
+    start_mcp_server()
     data = request.get_json(force=True)
     user_text = (data or {}).get("message", "")
     model = (data or {}).get("model") or cfg.get("default_model", "openai/gpt-4.1-mini")

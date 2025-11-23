@@ -143,7 +143,8 @@ sendBtn.onclick = async () => {
   const warnTimer = setTimeout(() => showWarn(ctrl), warnMinutes * 60 * 1000)
   try {
     const r = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: v, model: selectedModel, conversation_id: conversationId }), signal: ctrl.signal })
-    const j = await r.json()
+    const ct = r.headers.get('Content-Type') || ''
+    const j = ct.includes('application/json') ? await r.json() : { ok: false, error: (await r.text()) }
     if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
     hideWarn()
     if (!j.ok) {
@@ -169,7 +170,8 @@ testBtn.onclick = async () => {
   const ctrl = new AbortController()
   try {
     const r = await fetch('/test_response', { signal: ctrl.signal })
-    const j = await r.json()
+    const ct = r.headers.get('Content-Type') || ''
+    const j = ct.includes('application/json') ? await r.json() : { ok: false, error: (await r.text()) }
     if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
     if (!j.ok) { appendBlock('error', j.error || 'error'); if (j.raw_message) appendDebug('raw_message', j.raw_message); if (j.raw_response) appendDebug('raw_response', j.raw_response); return }
     renderResponse(j)

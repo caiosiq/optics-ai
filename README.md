@@ -44,7 +44,7 @@ Strict validation is applied via `response_format: json_schema`. The schema ensu
   - `agent_context`: concise lines describing this agent’s domain and output preferences
 
 ## Running Locally
-1. Install dependencies: `pip install flask requests matplotlib`
+1. Install dependencies: `pip install -r requirements.txt`
 2. Put your OpenRouter key in `agent-ui/openrouter_api.txt`
 3. Start server: `python server.py`
 4. Open: `http://127.0.0.1:8000/`
