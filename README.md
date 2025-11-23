@@ -13,17 +13,15 @@ A fast local web UI for assembling and studying optical systems with an LLM. It 
 - Robust debugging: shows raw provider payloads when schema errors occur
 
 ## Directory Layout
-- `server.py`: Flask server, OpenRouter calls, JSON schema enforcement, code execution
+- `server.py`: Flask server, OpenRouter calls, JSON schema enforcement, code execution, MCP client bootstrap
 - `static/index.html`: UI page, header, model modal, context bar, chat
 - `static/app.js`: UI logic, send/receive, run code, previews, context chips
 - `static/styles.css`: Theme, bubbles, code/text styles, modal, context bar
 - `agent_config.json`: Agent model and performance settings; agent-specific role and context
 - `openrouter_api.txt`: API key for OpenRouter (do not commit secrets)
-- `mcp/`: Local MCP-like layer
-  - `ui_output_format.json`: JSON Schema for responses
-  - `ui_output_examples.json`: Examples of valid responses
-  - `optics_guardrails.md`: Long-lived guard rails and behavior rules
-  - `validator.py`: Loads resources and validates candidate outputs
+- `optics_mcp/`: Local MCP server implemented in Python
+  - `optics_server.py`: FastMCP server exposing resources and tools
+  - `__init__.py`: Package initializer
 
 ## Response Schema
 The agent must return a single JSON object with these keys:
@@ -32,13 +30,13 @@ The agent must return a single JSON object with these keys:
 - `code_meta`: metadata for code output files (object with `files_expected: string[]`, or null)
 - `json_file`: structured optical system data (object or null)
 
-Strict validation is applied via `response_format: json_schema`. The schema ensures:
+Schema validation is applied via `response_format: json_schema` with strict mode disabled (`strict: false`) for provider compatibility. The schema ensures:
 - No extra keys
 - `json_file` includes `system`, `elements`, `spacing_mm`, `wavelength_nm`
 - `elements` each include `type`, `material`, `radius_front_mm`, `radius_back_mm`, `thickness_mm`
 
 ## Guard Rails and Agent Context
-- Guard rails live in `mcp/optics_guardrails.md` and are referenced by a thin system prompt.
+- Guard rails are provided via the MCP resource `resource://optics-guardrails` and referenced in the system prompt.
 - Agent-specific role and context live in `agent_config.json` under:
   - `agent_role`: e.g., "Optics Chat Agent"
   - `agent_context`: concise lines describing this agent’s domain and output preferences
@@ -76,7 +74,40 @@ Strict validation is applied via `response_format: json_schema`. The schema ensu
 - Session constraints extractor gathers concise parameter lines from recent user messages
 - Additional run context is injected via `extra_context` (UI-provided)
 - All additions are clipped by `max_context_addition_chars` to cap token usage
- - The system prompt is thin and references MCP resources rather than inlining schema and guard rails
+- The system prompt is thin and references MCP resources rather than inlining schema and guard rails
+
+## MCP Architecture and Usage
+- **Why MCP**
+  - Defer large context loading by exposing files and rules as resources the model can read only when needed
+  - Keep prompts small and fast by referencing resources (`resource://...`) instead of inlining long texts
+  - Provide server-side validation tools and structured outputs backed by Pydantic models
+  - Avoid namespace shadowing by using a local package name `optics_mcp`
+
+- **Server Components**
+  - `optics_mcp/optics_server.py` runs a FastMCP server exposing:
+    - `resource://ui-output-format`: Returns `OpticsAgentResponse.model_json_schema()` (Pydantic model) used for response formatting
+    - `resource://optics-guardrails`: Returns guard rules for JSON-only output and runnable code expectations
+    - `file://{path}`: Reads small files from safe directories (`saved_json`, `tmp_runs`) for on-demand context
+    - `validate_ui_output` tool: Validates candidate JSON against `OpticsAgentResponse`
+  - `server.py` boots an MCP client via stdio: `Client(script_path)` where `script_path` points to `optics_mcp/optics_server.py`
+
+- **Response Formatting**
+  - `server.py` builds the system prompt and message list, then calls OpenRouter with `response_format: json_schema`
+  - The JSON Schema comes from `OpticsAgentResponse.model_json_schema()`; on import failure, a minimal valid schema is used locally
+  - Strict mode is disabled (`strict: false`) to avoid provider rejections for non-exhaustive schemas
+  - The server performs local Pydantic validation and retries with a corrective nudge on errors
+
+- **Resources vs Prompt Text**
+  - The prompt references `resource://ui-output-format` and `resource://optics-guardrails` so the model knows where to read format and rules
+  - Files are passed as metadata and read via `file://{path}` only when required; this saves tokens and improves performance
+
+- **Shadowing Avoidance**
+  - The local MCP package was renamed from `mcp` to `optics_mcp` to prevent import conflicts with the official `mcp` library used by FastMCP
+
+## Attaching Files for Context
+- Place files under `agent-ui/saved_json` or outputs under `agent-ui/tmp_runs`
+- Provide the file path in the UI context; the model is instructed it can read via `file://{path}` when necessary
+- Large files are rejected by the resource to prevent excessive token usage; prefer summaries or targeted reads
 
 ## Configuration (`agent_config.json`)
 - `default_model`, `temperature`, `reasoning_effort`, `max_tokens`
@@ -111,4 +142,3 @@ Strict validation is applied via `response_format: json_schema`. The schema ensu
   - Reduce context sizes in `agent_config.json`
 - Codes failing due to arguments:
   - The guard rails require runnable code without CLI args; the assistant should request parameters in `text` and provide defaults in `code`
-
