@@ -8,6 +8,9 @@ const modelSelectEl = document.getElementById('modelSelect')
 const startChatBtn = document.getElementById('startChat')
 let selectedModel = null
 let conversationId = null
+let drafterModel = null
+let pendingDraftCode = null
+let pendingDraftRaw = null
 const contextBarEl = document.getElementById('contextBar')
 let contextAdds = []
 const warningBarEl = document.getElementById('warningBar')
@@ -28,105 +31,7 @@ function appendBlock(label, content) {
   messagesEl.scrollTop = messagesEl.scrollHeight
 }
 
-function appendCode(code, meta) {
-  const wrap = document.createElement('div')
-  wrap.className = 'bubble bubble-agent'
-  const tag = document.createElement('div')
-  tag.className = 'tag'
-  tag.textContent = 'code'
-  wrap.appendChild(tag)
-  const pre = document.createElement('pre')
-  pre.className = 'code'
-  pre.textContent = code
-  wrap.appendChild(pre)
-  const row = document.createElement('div')
-  row.className = 'row'
-  const run = document.createElement('button')
-  run.textContent = 'Run Code'
-  const out = document.createElement('div')
-  out.className = 'small'
-  run.onclick = async () => {
-    out.textContent = 'Running...'
-    const r = await fetch('/run_code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, code_meta: meta || null }) })
-    const j = await r.json()
-    out.textContent = j.ok ? (j.output || '[no output]') : j.error || 'error'
-    if (j.ok && (j.output || '').trim()) {
-      const addBtn = document.createElement('button')
-      addBtn.textContent = 'Add output to context'
-      addBtn.onclick = () => { contextAdds.push({ type: 'output', text: j.output }); if (contextBarEl) renderContextBar() }
-      row.appendChild(addBtn)
-    }
-    if (j.images && j.images.length) {
-      j.images.forEach(b64 => {
-        const img = document.createElement('img')
-        img.src = 'data:image/png;base64,' + b64
-        img.style.maxWidth = '100%'
-        img.style.borderRadius = '8px'
-        img.style.border = '1px solid #2a3b45'
-        img.style.marginTop = '8px'
-        wrap.appendChild(img)
-      })
-    }
-    if (j.files && j.files.length) {
-      j.files.forEach(path => {
-        displayFile(path, wrap)
-        const add = document.createElement('button')
-        add.textContent = 'Add ' + (path.split('/').pop()) + ' to context'
-        add.onclick = async () => {
-          try {
-            const rr = await fetch('/download?path=' + encodeURIComponent(path))
-            let snippet = ''
-            const ct = rr.headers.get('Content-Type') || ''
-            if (ct.includes('application/json')) {
-              const obj = await rr.json()
-              snippet = JSON.stringify(obj, null, 2)
-            } else {
-              snippet = await rr.text()
-            }
-            contextAdds.push({ type: 'file', name: path.split('/').pop(), text: snippet })
-            if (contextBarEl) renderContextBar()
-          } catch (e) {}
-        }
-        wrap.appendChild(add)
-      })
-    }
-  }
-  row.appendChild(run)
-  row.appendChild(out)
-  wrap.appendChild(row)
-  messagesEl.appendChild(wrap)
-  messagesEl.scrollTop = messagesEl.scrollHeight
-}
-
-function appendJson(obj) {
-  const wrap = document.createElement('div')
-  wrap.className = 'bubble bubble-agent'
-  const tag = document.createElement('div')
-  tag.className = 'tag'
-  tag.textContent = 'json_file'
-  wrap.appendChild(tag)
-  const pre = document.createElement('pre')
-  pre.className = 'code'
-  pre.textContent = JSON.stringify(obj, null, 2)
-  wrap.appendChild(pre)
-  const row = document.createElement('div')
-  row.className = 'row'
-  const save = document.createElement('button')
-  save.textContent = 'Save JSON'
-  const note = document.createElement('div')
-  note.className = 'small'
-  save.onclick = async () => {
-    note.textContent = 'Saving...'
-    const r = await fetch('/save_json', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ json_file: obj }) })
-    const j = await r.json()
-    note.textContent = j.ok ? `Saved: ${j.path}` : j.error || 'error'
-  }
-  row.appendChild(save)
-  row.appendChild(note)
-  wrap.appendChild(row)
-  messagesEl.appendChild(wrap)
-  messagesEl.scrollTop = messagesEl.scrollHeight
-}
+/* removed legacy appendCode/appendJson; unified rendering via renderLLMOutput + appendCodeIn/appendJsonIn */
 
 function renderResponse(r) {
   renderLLMOutput(r.response || {}, r.metrics || null)
@@ -142,19 +47,7 @@ sendBtn.onclick = async () => {
   const ctrl = new AbortController()
   const warnTimer = setTimeout(() => showWarn(ctrl), warnMinutes * 60 * 1000)
   try {
-    const r = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: v, model: selectedModel, conversation_id: conversationId }), signal: ctrl.signal })
-    const ct = r.headers.get('Content-Type') || ''
-    const j = ct.includes('application/json') ? await r.json() : { ok: false, error: (await r.text()) }
-    if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
-    hideWarn()
-    if (!j.ok) {
-      appendBlock('error', j.error || 'error')
-      if (j.raw_message) appendDebug('raw_message', j.raw_message)
-      if (j.raw_response) appendDebug('raw_response', j.raw_response)
-      return
-    }
-    renderResponse(j)
-    if (contextBarEl) { contextAdds = []; renderContextBar() }
+    await sendFlow(v, loading, ctrl)
   } catch (e) {
     if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
     hideWarn()
@@ -294,7 +187,7 @@ function appendDebug(label, data) {
   messagesEl.scrollTop = messagesEl.scrollHeight
 }
 
-function renderLLMOutput(o, metrics) {
+function renderLLMOutput(o, metrics, draftCode, draftRaw) {
   const wrap = document.createElement('div')
   wrap.className = 'bubble bubble-agent'
   const head = document.createElement('div')
@@ -312,7 +205,8 @@ function renderLLMOutput(o, metrics) {
     const post = metrics.post_ms ?? 0
     const tries = metrics.retries ?? 1
     summary.className = 'muted'
-    summary.textContent = `timing: prep ${prep}ms • llm ${llm}ms • post ${post}ms • attempts ${tries}`
+    const conf = (typeof metrics.confidence === 'number') ? ` • confidence ${(metrics.confidence*100).toFixed(0)}%` : ''
+    summary.textContent = `timing: prep ${prep}ms • llm ${llm}ms • post ${post}ms • attempts ${tries}${conf}`
     summary.style.display = 'none'
   }
   const btn = document.createElement('button')
@@ -332,10 +226,54 @@ function renderLLMOutput(o, metrics) {
   head.appendChild(actions)
   wrap.appendChild(head)
   if (o.text) appendTextIn(wrap, 'text', o.text)
-  if (o.code) appendCodeIn(wrap, o.code, o.code_meta)
+  if (o.code) appendCodeIn(wrap, o.code, o.code_meta, draftCode, draftRaw)
   if (o.json_file) appendJsonIn(wrap, o.json_file)
   messagesEl.appendChild(wrap)
   messagesEl.scrollTop = messagesEl.scrollHeight
+}
+
+async function sendFlow(v, loading, ctrl) {
+  try {
+    const r = await fetch('/chat_flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: v, conversation_id: conversationId, drafter_model: drafterModel }), signal: ctrl.signal })
+    const reader = r.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      let idx
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const lines = chunk.split('\n')
+        let ev = 'message'
+        let data = ''
+        for (const ln of lines) {
+          if (ln.startsWith('event:')) ev = ln.slice(6).trim()
+          if (ln.startsWith('data:')) data = ln.slice(5).trim()
+        }
+        if (!data) continue
+        try {
+          const payload = JSON.parse(data)
+          if (ev === 'draft') {
+            pendingDraftCode = payload.code || ''
+            pendingDraftRaw = payload.raw || ''
+          } else if (ev === 'review') {
+            renderLLMOutput(payload.response || {}, payload.metrics || null, pendingDraftCode, pendingDraftRaw)
+            pendingDraftCode = null
+            pendingDraftRaw = null
+          } else if (ev === 'error') {
+            appendBlock('error', payload.error || 'error')
+          }
+        } catch {}
+      }
+    }
+  } finally {
+    if (loading && loading.parentNode) loading.parentNode.removeChild(loading)
+    hideWarn()
+    if (contextBarEl) { contextAdds = []; renderContextBar() }
+  }
 }
 
 function appendTextIn(container, label, content) {
@@ -351,24 +289,80 @@ function appendTextIn(container, label, content) {
   container.appendChild(blk)
 }
 
-function appendCodeIn(container, code, meta) {
+function appendCodeIn(container, code, meta, draftCode, draftRaw) {
   const blk = document.createElement('div')
   blk.className = 'block'
   const tag = document.createElement('div')
   tag.className = 'tag'
   tag.textContent = 'code'
   blk.appendChild(tag)
+  const tools = document.createElement('div')
+  tools.className = 'code-tools'
+  blk.appendChild(tools)
+  if (draftCode && draftCode.trim()) {
+    const toggle = document.createElement('button')
+    toggle.textContent = 'Show Drafter Code'
+    toggle.className = 'btn-sm btn-ghost btn-pill'
+    const dpre = document.createElement('pre')
+    dpre.className = 'code'
+    dpre.style.display = 'none'
+    dpre.textContent = draftCode
+    toggle.onclick = () => {
+      const show = dpre.style.display === 'none'
+      dpre.style.display = show ? 'block' : 'none'
+      toggle.textContent = show ? 'Hide Drafter Code' : 'Show Drafter Code'
+    }
+    tools.appendChild(toggle)
+    blk.appendChild(dpre)
+  }
+  if (draftRaw && String(draftRaw).trim()) {
+    const rtoggle = document.createElement('button')
+    rtoggle.textContent = 'Show Draft Raw Reply'
+    rtoggle.className = 'btn-sm btn-ghost btn-pill'
+    const rpre = document.createElement('pre')
+    rpre.className = 'code'
+    rpre.style.display = 'none'
+    rpre.textContent = typeof draftRaw === 'string' ? draftRaw : JSON.stringify(draftRaw, null, 2)
+    rtoggle.onclick = () => {
+      const show = rpre.style.display === 'none'
+      rpre.style.display = show ? 'block' : 'none'
+      rtoggle.textContent = show ? 'Hide Draft Raw Reply' : 'Show Draft Raw Reply'
+    }
+    tools.appendChild(rtoggle)
+    blk.appendChild(rpre)
+  }
   const codeBlock = renderCodeBlock(code)
+  let editMode = false
+  const editBtn = document.createElement('button')
+  editBtn.textContent = 'Edit Code'
+  editBtn.className = 'btn-sm btn-ghost btn-pill'
+  const addBtn = document.createElement('button')
+  addBtn.textContent = 'Add to context'
+  addBtn.className = 'btn-sm btn-ghost btn-pill'
+  tools.appendChild(editBtn)
+  tools.appendChild(addBtn)
+  editBtn.onclick = () => {
+    editMode = !editMode
+    codeBlock.querySelectorAll('.code-txt').forEach(el => { el.contentEditable = editMode ? 'true' : 'false' })
+    editBtn.textContent = editMode ? 'Done Editing' : 'Edit Code'
+  }
+  addBtn.onclick = () => {
+    const current = getCodeFromBlock(codeBlock) || String(code || '')
+    contextAdds.push({ type: 'output', text: current })
+    if (contextBarEl) renderContextBar()
+  }
   blk.appendChild(codeBlock)
   const row = document.createElement('div')
   row.className = 'row'
   const run = document.createElement('button')
   run.textContent = 'Run Code'
+  run.className = 'btn-sm btn-pill'
   const out = document.createElement('div')
   out.className = 'small'
   run.onclick = async () => {
     out.textContent = 'Running...'
-    const r = await fetch('/run_code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, code_meta: meta || null }) })
+    const current = getCodeFromBlock(codeBlock) || String(code || '')
+    const r = await fetch('/run_code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: current, code_meta: meta || null }) })
     const j = await r.json()
     if (j.ok) {
       out.textContent = (j.output || '[no output]')
@@ -498,18 +492,34 @@ function renderCodeBlock(code) {
   return cont
 }
 
+function getCodeFromBlock(cont) {
+  try {
+    const lines = []
+    cont.querySelectorAll('.code-row .code-txt').forEach(el => {
+      const t = el.textContent.replace(/\u200b/g, '')
+      lines.push(t)
+    })
+    return lines.join('\n')
+  } catch (e) { return '' }
+}
+
 function showModal() {
   modalEl.style.display = 'flex'
 }
 
 startChatBtn.onclick = () => {
   selectedModel = modelSelectEl.value
-  modelTag.textContent = 'model: ' + selectedModel
+  modelTag.textContent = 'reviewer: ' + selectedModel + ' • drafter: ' + drafterModel
   conversationId = crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2))
   modalEl.style.display = 'none'
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    fetch('/config_models').then(r => r.json()).then(j => {
+      if (j && j.drafter_model) drafterModel = j.drafter_model
+    }).catch(() => {})
+  } catch {}
   showModal()
 })
 

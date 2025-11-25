@@ -80,6 +80,38 @@ def make_app():
         except ValidationError as ve:
             return {"ok": False, "errors": [str(ve)]}
 
+    @app.tool("exec_python_sandbox")
+    def exec_python_sandbox(code: str) -> dict:
+        import io, base64
+        import sys
+        images: List[str] = []
+        out_buf = io.StringIO()
+        err_buf = io.StringIO()
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        def _print_figs():
+            for num in plt.get_fignums():
+                buf = io.BytesIO()
+                plt.figure(num)
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                buf.seek(0)
+                images.append(base64.b64encode(buf.read()).decode('ascii'))
+        plt.show = _print_figs
+        try:
+            old_out, old_err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = out_buf, err_buf
+            ns = {}
+            exec(code or "", ns, ns)
+        except Exception as e:
+            pass
+        finally:
+            sys.stdout, sys.stderr = old_out, old_err
+        output = out_buf.getvalue()
+        err = err_buf.getvalue()
+        ok = (err.strip() == "")
+        return {"ok": ok, "output": output + ("\n" + err if err else ""), "images": images}
+
     return app
 
 

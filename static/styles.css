@@ -35,6 +35,12 @@ button:hover { background: linear-gradient(180deg, #66fcf1, #4ee8de); }
 .textdoc { white-space: pre-wrap; font-family: 'Merriweather', Georgia, 'Times New Roman', serif; background: linear-gradient(180deg, rgba(25,32,40,0.7), rgba(21,28,36,0.7)); color: #e6f7f8; padding: 14px; border-radius: 10px; border: 1px solid #2a3b45; box-shadow: inset 0 0 0 1px rgba(102,252,241,0.06); }
 .textdoc { max-width: 100%; max-height: 420px; overflow: auto; line-height: 1.6; font-size: 14px; }
 .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.code-tools { display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin: 6px 0; }
+.btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 999px; }
+.btn-ghost { background: rgba(31,40,51,0.5); color: #cfe9ea; box-shadow: none; border: 1px solid #2a3b45; }
+.btn-ghost:hover { background: rgba(102,252,241,0.12); color: #66fcf1; }
+.btn-pill { border-radius: 999px; }
+.code-txt[contenteditable="true"] { background: rgba(102,252,241,0.06); border-radius: 6px; }
 .small { font-size: 12px; color: #c5c6c7; }
 .loader { width: 12px; height: 12px; border: 2px solid #66fcf1; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -44,11 +50,9 @@ table.preview tr:nth-child(even) { background: rgba(31,40,51,0.4); }
 .modal { position: fixed; inset: 0; background: rgba(11,12,16,0.7); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 420px; background: linear-gradient(180deg, rgba(31,40,51,0.9), rgba(23,30,39,0.9)); border: 1px solid #45a29e; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.45); }
 .modal-card select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #45a29e; background: #0b0c10; color: #c5c6c7; }
-.
 .context-bar { position: sticky; top: 8px; z-index: 2; margin-bottom: 10px; padding: 8px; border: 1px dashed #45a29e; border-radius: 10px; background: rgba(21,28,36,0.6); }
 .context-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; margin: 4px; border-radius: 999px; border: 1px solid #2a3b45; background: rgba(31,40,51,0.7); color: #cfe9ea; font-size: 12px; }
 .context-chip button { border: none; background: transparent; color: #66fcf1; cursor: pointer; }
-.
 .warn-banner { position: sticky; top: 8px; z-index: 2; margin-bottom: 10px; padding: 10px; border: 1px solid #b87900; border-radius: 10px; background: rgba(184,121,0,0.15); color: #ffd48a; display: flex; align-items: center; justify-content: space-between; }
 .warn-actions { display: flex; gap: 8px; }
 .warn-banner button { padding: 8px 10px; border: none; border-radius: 6px; background: #b87900; color: #0b0c10; cursor: pointer; }
