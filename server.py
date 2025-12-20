@@ -30,13 +30,31 @@ CONVERSATIONS: dict[str, list[dict]] = {}
 
 # Start MCP client early so it's available when chat handler runs
 MCP_CLIENT = None
+PREWARM_DONE = False
 
 def start_mcp_server():
-    """Start local MCP server client (optics_mcp/optics_server.py) once per process."""
-    global MCP_CLIENT
+    """Start local MCP server client (optics_mcp/optics_server.py) once per process and prewarm once."""
+    global MCP_CLIENT, PREWARM_DONE
     if MCP_CLIENT is None:
         script_path = str((APP_DIR / "optics_mcp" / "optics_server.py").resolve())
         MCP_CLIENT = Client(script_path)
+    if not PREWARM_DONE:
+        try:
+            import asyncio
+            async def _ping():
+                async with MCP_CLIENT:
+                    try:
+                        await MCP_CLIENT.call_tool("ping", {})
+                    except Exception:
+                        pass
+                    try:
+                        await MCP_CLIENT.call_tool("exec_python_sandbox", {"code": "print('warmup')", "timeout_s": 5})
+                    except Exception:
+                        pass
+            asyncio.run(_ping())
+        except Exception:
+            pass
+        PREWARM_DONE = True
 
 class LLMJSONError(Exception):
     def __init__(self, message: str, raw_out: dict | None = None, raw_content: str | dict | None = None):
@@ -134,6 +152,68 @@ def _extract_code_text(s: str) -> str:
             return body
     return t
 
+def simple_rag_retrieve(user_query: str) -> str:
+    query = (user_query or "").lower()
+    # Only the four curated knowledge files
+    knowledge_map = {
+        # Geometric Optics (ray/ABCD)
+        "geometric": "knowledge/geometric_optics.txt",
+        "ray": "knowledge/geometric_optics.txt",
+        "abcd": "knowledge/geometric_optics.txt",
+        "matrix": "knowledge/geometric_optics.txt",
+        # Laser Physics (gain/pump/resonator specifics)
+        "laser": "knowledge/laser_physics.txt",
+        "gain": "knowledge/laser_physics.txt",
+        "pump": "knowledge/laser_physics.txt",
+        "resonator": "knowledge/laser_physics.txt",
+        # Physical Optics (wave/fourier/diffraction)
+        "physical": "knowledge/physical_optics.txt",
+        "wave": "knowledge/physical_optics.txt",
+        "fourier": "knowledge/physical_optics.txt",
+        "fresnel": "knowledge/physical_optics.txt",
+        "diffraction": "knowledge/physical_optics.txt",
+        # Coding Standards
+        "code": "knowledge/coding_standards.txt",
+        "standard": "knowledge/coding_standards.txt",
+        "standards": "knowledge/coding_standards.txt",
+        "practice": "knowledge/coding_standards.txt",
+        "simulate": "knowledge/coding_standards.txt",
+        "optimize": "knowledge/coding_standards.txt",
+        "simulation": "knowledge/coding_standards.txt",
+        "optimization": "knowledge/coding_standards.txt",
+    }
+    context: list[str] = []
+    files_to_read = set()
+    files_to_read.add("knowledge/coding_standards.txt")
+    for kw, fp in knowledge_map.items():
+        if kw in query:
+            files_to_read.add(fp)
+    for fp in files_to_read:
+        try:
+            full = APP_DIR / fp
+            if full.exists():
+                context.append(f"--- REFERENCE DOC: {fp} ---\n{full.read_text(encoding='utf-8')}")
+        except Exception as e:
+            print(f"RAG Error reading {fp}: {e}")
+    if not context:
+        return ""
+    return "\n".join(context)
+
+def _rag_all_context() -> str:
+    try:
+        files = [
+            APP_DIR / "knowledge" / "geometric_optics.txt",
+            APP_DIR / "knowledge" / "laser_physics.txt",
+            APP_DIR / "knowledge" / "physical_optics.txt",
+            APP_DIR / "knowledge" / "coding_standards.txt",
+        ]
+        out = []
+        for fp in files:
+            if fp.exists():
+                out.append(f"--- REFERENCE DOC: {fp.name} ---\n{fp.read_text(encoding='utf-8')}")
+        return "\n".join(out)
+    except Exception:
+        return ""
 def _looks_like_json(s: str) -> bool:
     s = (s or "").strip()
     return (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]"))
@@ -208,7 +288,7 @@ def _normalize_response(obj: Dict[str, Any]) -> Dict[str, Any]:
 #     raw = content if isinstance(content, str) else json.dumps(content or {})
 #     return code, {"llm_ms": dt, "usage": out.get("usage"), "finish_reason": choice.get("finish_reason"), "confidence": round(conf, 2)}, raw
 
-def call_openrouter_drafter(messages: list[dict], model: str, max_tokens: int = 2000, temperature: float = 0.4) -> tuple[str, Dict[str, Any], str]:
+def call_openrouter_drafter(messages: list[dict], model: str, max_tokens: int = 2000, temperature: float = 0.4, reasoning_effort: str = "low") -> tuple[str, Dict[str, Any], str]:
     """Call a fast model to produce raw Python code; handles agentic tool-call outputs."""
     api_key = API_KEY_PATH.read_text().strip()
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -221,6 +301,7 @@ def call_openrouter_drafter(messages: list[dict], model: str, max_tokens: int = 
         "messages": messages_with_prefill, # <--- We send the forced start
         "max_tokens": max_tokens,
         "temperature": temperature,
+        "reasoning": {"effort": reasoning_effort},
     }
     
     t0 = time.perf_counter()
@@ -279,7 +360,7 @@ def call_openrouter_drafter(messages: list[dict], model: str, max_tokens: int = 
     raw = content if isinstance(content, str) else json.dumps(content or {})
     return code, {"llm_ms": dt, "usage": out.get("usage"), "finish_reason": choice.get("finish_reason"), "confidence": round(conf, 2)}, raw
 
-def call_openrouter_thinker(messages: list[dict], model: str, max_tokens: int = 600, temperature: float = 0.2) -> tuple[str, Dict[str, Any], str]:
+def call_openrouter_thinker(messages: list[dict], model: str, max_tokens: int = 600, temperature: float = 0.2, reasoning_effort: str = "high") -> tuple[str, Dict[str, Any], str]:
     api_key = API_KEY_PATH.read_text().strip()
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -288,6 +369,7 @@ def call_openrouter_thinker(messages: list[dict], model: str, max_tokens: int = 
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
+        "reasoning": {"effort": reasoning_effort},
     }
     t0 = time.perf_counter()
     r = requests.post(url, headers=headers, json=payload, timeout=600)
@@ -526,6 +608,96 @@ def _write_log(run_dir: pathlib.Path, sections: list[tuple[str, str]]):
         pass
 
 
+def _save_code(run_dir: pathlib.Path, filename: str, code: str):
+    try:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        p = run_dir / filename
+        pathlib.Path(p).write_text(code or "", encoding="utf-8")
+    except Exception:
+        pass
+
+def _run_code_subprocess(run_dir: pathlib.Path, code: str, timeout_s: int) -> Dict[str, Any]:
+    try:
+        import subprocess, io, base64, re, os
+        pre_files = set()
+        try:
+            for p in run_dir.iterdir():
+                if p.is_file():
+                    pre_files.add(p.name)
+        except Exception:
+            pass
+        instrument = (
+            "import matplotlib\n"
+            "matplotlib.use('Agg')\n"
+            "import matplotlib.pyplot as plt\n"
+            "import sys, io, base64\n"
+            "def _print_figs():\n"
+            "    for num in plt.get_fignums():\n"
+            "        buf = io.BytesIO()\n"
+            "        plt.figure(num)\n"
+            "        plt.savefig(buf, format='png', bbox_inches='tight')\n"
+            "        buf.seek(0)\n"
+            "        b64 = base64.b64encode(buf.read()).decode('ascii')\n"
+            "        print('[[IMAGE]]'+b64)\n"
+            "plt.show = _print_figs\n"
+        )
+        program = instrument + "\n" + (code or "")
+        r = subprocess.run(["python", "-c", program], cwd=str(run_dir), capture_output=True, text=True, timeout=max(1, int(timeout_s)))
+        out = r.stdout or ""
+        err = r.stderr or ""
+        images = []
+        text_out = []
+        for line in out.splitlines():
+            if line.startswith("[[IMAGE]]"):
+                images.append(line[len("[[IMAGE]]"):])
+            else:
+                text_out.append(line)
+        files = []
+        try:
+            ignore = {"run_code_input.py", "run_code_output.txt", "files.lst", "interaction.txt", "drafter.py", "reviewer.py"}
+            for p in run_dir.iterdir():
+                if p.is_file() and (p.name not in pre_files) and (p.name not in ignore):
+                    files.append(str(p.resolve()))
+        except Exception:
+            pass
+        error_line = None
+        error_user_line = None
+        error_type = None
+        error_msg = None
+        if err:
+            m = re.search(r"File \"<string>\", line (\d+)", err)
+            if m:
+                try:
+                    error_line = int(m.group(1))
+                except Exception:
+                    error_line = None
+            last = ""
+            for ln in err.splitlines()[::-1]:
+                ln = ln.strip()
+                if ln:
+                    last = ln
+                    break
+            if last:
+                parts = last.split(":", 1)
+                error_type = parts[0].strip()
+                error_msg = parts[1].strip() if len(parts) > 1 else ""
+            inst_lines = instrument.count("\n") + 1
+            if error_line and error_line > inst_lines:
+                error_user_line = error_line - inst_lines
+        return {
+            "ok": r.returncode == 0,
+            "output": "\n".join(text_out) + ("\n" + err if err else ""),
+            "images": images,
+            "files": files,
+            "error": (error_type + (": " + error_msg if error_msg else "")) if r.returncode != 0 else None,
+            "error_line": error_line,
+            "error_user_line": error_user_line,
+            "error_type": error_type,
+        }
+    except Exception as e:
+        return {"ok": False, "output": "", "images": [], "files": [], "error": str(e), "error_line": None, "error_user_line": None, "error_type": None}
+
+
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
@@ -597,6 +769,9 @@ def chat():
             ("Reviewer Raw Reply:", raw_text),
             ("Final Parsed reply:", json.dumps(resp, indent=2)),
         ])
+        c = str(resp.get("code") or "")
+        if c.strip():
+            _save_code(run_dir, "reviewer.py", c)
         assistant_text = resp.get("text") or "Provided structured output"
         _append_history(conv_id, "assistant", assistant_text)
         post_ms = int((time.perf_counter() - t0) * 1000) - prep_ms - call_metrics.get("llm_ms", 0)
@@ -651,6 +826,7 @@ def chat_flow():
             # Load specific configs
             llmconf = cfg.get("llm", {})
             dconf = cfg.get("drafter", {})
+            t_all_start = time.perf_counter()
             # Fast gating: if not a code/simulation request, skip Thinker/Drafter
             t = (user_text or "").lower().strip()
             kws = list(dconf.get("keywords_trigger", [])) or [
@@ -661,11 +837,17 @@ def chat_flow():
             if not should_draft:
                 rev_system = build_system_prompt(cfg)
                 rev_messages = [{"role": "system", "content": rev_system}] + history + ctx_message + [{"role": "user", "content": user_text}]
+                rag_cfg = cfg.get("rag", {})
+                if bool(rag_cfg.get("include_all_to_reviewer")):
+                    all_ctx = _rag_all_context()
+                    if all_ctx:
+                        rev_messages.insert(0, {"role": "system", "content": all_ctx})
                 models_cfg = cfg.get("models", {})
                 reviewer_fast = str(models_cfg.get("fast_reviewer_model") or reviewer_model)
                 small_tokens = int(llmconf.get("max_tokens_reviewer_small", 400) or 400)
                 small_temp = float(llmconf.get("temperature_reviewer_small", 0.2) or 0.2)
                 small_effort = str(llmconf.get("reasoning_effort_reviewer_small", "none"))
+                t_rev_start = time.perf_counter()
                 resp, rm, raw_r = call_openrouter_reviewer(
                     rev_messages,
                     reviewer_fast,
@@ -678,7 +860,13 @@ def chat_flow():
                     ("Reviewer Raw Reply:", raw_r),
                     ("Final Parsed reply:", json.dumps(resp, indent=2)),
                 ])
-                q.put(("review", {"response": resp, "metrics": rm}))
+                c = str(resp.get("code") or "")
+                if c.strip():
+                    _save_code(run_dir, "reviewer.py", c)
+                total_ms = int((time.perf_counter() - t_all_start) * 1000)
+                rev_llm = rm.get("llm_ms") if isinstance(rm, dict) else None
+                metrics_combined = {"total_ms": total_ms, "reviewer_ms": int(rev_llm or ((time.perf_counter() - t_rev_start) * 1000)), "timestamp": int(time.time()*1000)}
+                q.put(("review", {"response": resp, "metrics": metrics_combined}))
                 return
             
             # 1. Check if we need to draft code or just chat
@@ -712,14 +900,31 @@ def chat_flow():
             # --- AGENTIC PATH (Think -> Draft -> Review) ---
 
             # STEP 1: THINKER (The Physicist)
+            q.put(("status", {"message": "📚 Retrieving Physics Knowledge..."}))
+            rag_cfg = cfg.get("rag", {})
+            if bool(rag_cfg.get("include_all_to_thinker")):
+                retrieved_context = _rag_all_context()
+            else:
+                retrieved_context = simple_rag_retrieve(user_text)
             q.put(("status", {"message": "🤔 Physicist is planning..."}))
-            
+
             thinker_messages = [{"role": "system", "content": cfg.get("thinker", {}).get("system")}] + history + [{"role": "user", "content": user_text}]
+            if retrieved_context:
+                rag_instruction = (
+                    f"User Query: {user_text}\n\n"
+                    f"CRITICAL PHYSICS REFERENCES (MUST FOLLOW):\n{retrieved_context}\n\n"
+                    "TASK: Create a Physics Blueprint based on the reference above."
+                )
+                thinker_messages = list(thinker_messages)
+                thinker_messages[-1] = {"role": "user", "content": rag_instruction}
+                _write_log(run_dir, [("RAG Context (Thinker):", retrieved_context)])
+            t_think_start = time.perf_counter()
             plan_text, tm, raw_t = call_openrouter_thinker(
                 thinker_messages,
                 model=thinker_model,
                 max_tokens=int(llmconf.get("max_tokens_thinker", 1200) or 1200),
                 temperature=float(llmconf.get("temperature_thinker", 0.2) or 0.2),
+                reasoning_effort=str(llmconf.get("reasoning_effort_thinker", "high")),
             )
             if not str(plan_text or "").strip():
                 need = int(llmconf.get("max_tokens_thinker", 1200) or 1200)
@@ -744,6 +949,12 @@ def chat_flow():
             # Construct Drafter Context: System + History + PLAN + User Request
             # We inject the plan as a "User" instruction to ensure it is followed.
             drafter_messages = [{"role": "system", "content": system_prompt}] + history + ctx_message
+            rag_cfg = cfg.get("rag", {})
+            if bool(rag_cfg.get("include_all_to_drafter")):
+                all_ctx = _rag_all_context()
+                if all_ctx:
+                    drafter_messages.append({"role": "system", "content": all_ctx})
+                    _write_log(run_dir, [("RAG Context (Drafter):", all_ctx)])
             drafter_messages.append({
                 "role": "user", 
                 "content": f"Here is the Physics Blueprint you must follow:\n{plan_text}\n\nUser Request: {user_text}"
@@ -751,13 +962,24 @@ def chat_flow():
 
             d_tokens = int(llmconf.get("max_tokens_drafter", 4000) or 4000)
             d_temp = float(llmconf.get("temperature_drafter", 0.2) or 0.2)
-            
-            code, m, raw_d = call_openrouter_drafter(drafter_messages, drafter_model, max_tokens=d_tokens, temperature=d_temp)
+            if not bool(rag_cfg.get("include_all_to_drafter")):
+                try:
+                    cs_full = APP_DIR / "knowledge" / "coding_standards.txt"
+                    if cs_full.exists():
+                        cs_text = cs_full.read_text(encoding="utf-8")
+                        drafter_messages.append({"role": "system", "content": f"CODING STANDARDS:\n{cs_text}"})
+                        _write_log(run_dir, [("RAG Context (Drafter):", cs_text)])
+                except Exception as e:
+                    print(f"RAG Error reading coding standards: {e}")
+            t_draft_start = time.perf_counter()
+            code, m, raw_d = call_openrouter_drafter(drafter_messages, drafter_model, max_tokens=d_tokens, temperature=d_temp, reasoning_effort=str(llmconf.get("reasoning_effort_drafter", "low")))
             
             _write_log(run_dir, [
                 ("Drafter Prompt (with plan):", json.dumps(drafter_messages, indent=2)),
                 ("Drafter Output:", raw_d),
             ])
+            if str(code or "").strip():
+                _save_code(run_dir, "drafter.py", code)
             
             # Stream the draft to UI immediately
             _append_history(conv_id, "assistant", code[:200])
@@ -770,16 +992,31 @@ def chat_flow():
             
             # Construct a specific Review Packet
             # We explicitly show the Reviewer the Request and the Draft
+            
+            cs_text_block = ""
+            try:
+                cs_full_for_rev = APP_DIR / "knowledge" / "coding_standards.txt"
+                if cs_full_for_rev.exists():
+                    cs_text_block = cs_full_for_rev.read_text(encoding="utf-8")
+            except Exception:
+                cs_text_block = ""
             review_packet = (
                 f"User Request: {user_text}\n\n"
                 f"Physics Plan Used:\n{plan_text}\n\n"
                 f"Draft Code Generated:\n{code}\n\n"
-                "TASK: Validate this code. If it fails the physics check (e.g. wrong matrix order), FIX IT."
+                + (f"OUR CODING STANDARDS:\n{cs_text_block}\n\n" if cs_text_block else "")
+                + "TASK: Validate this code. Make sure the geometry proposed makes sense, that the method of finding the parameters is valid, efficient and with reasonable physical bounds, and that the physics equations for this system were correctly proposed, FIX IT."
             )
             
             rev_messages = [{"role": "system", "content": rev_system}] + history + [{"role": "user", "content": review_packet}]
+            rag_cfg = cfg.get("rag", {})
+            if bool(rag_cfg.get("include_all_to_reviewer")):
+                all_ctx = _rag_all_context()
+                if all_ctx:
+                    rev_messages.insert(0, {"role": "system", "content": all_ctx})
             models_cfg = cfg.get("models", {})
             reviewer_fast = str(models_cfg.get("fast_reviewer_model") or reviewer_model)
+            t_rev_start = time.perf_counter()
             resp, rm, raw_r = call_openrouter_reviewer(
                 rev_messages,
                 reviewer_fast,
@@ -793,8 +1030,19 @@ def chat_flow():
                 ("Reviewer Raw Reply:", raw_r),
                 ("Final Parsed reply:", json.dumps(resp, indent=2)),
             ])
+            c = str(resp.get("code") or "")
+            if c.strip():
+                _save_code(run_dir, "reviewer.py", c)
             
-            q.put(("review", {"response": resp, "metrics": rm}))
+            total_ms = int((time.perf_counter() - t_all_start) * 1000)
+            metrics_combined = {
+                "total_ms": total_ms,
+                "thinker_ms": int((tm.get("llm_ms") if isinstance(tm, dict) else ((time.perf_counter() - t_think_start) * 1000))),
+                "drafter_ms": int((m.get("llm_ms") if isinstance(m, dict) else ((time.perf_counter() - t_draft_start) * 1000))),
+                "reviewer_ms": int((rm.get("llm_ms") if isinstance(rm, dict) else ((time.perf_counter() - t_rev_start) * 1000))),
+                "timestamp": int(time.time()*1000)
+            }
+            q.put(("review", {"response": resp, "metrics": metrics_combined}))
 
         except Exception as e:
             q.put(("error", {"error": str(e)}))
@@ -822,27 +1070,50 @@ def run_code():
     data = request.get_json(force=True)
     code = (data or {}).get("code", "")
     code_meta = (data or {}).get("code_meta")
+    timeout_s = int((data or {}).get("timeout_s") or 40)
     try:
-        if MCP_CLIENT is None:
-            start_mcp_server()
-        import asyncio
-        async def _run():
-            async with MCP_CLIENT:
-                res = await MCP_CLIENT.call_tool("exec_python_sandbox", {"code": code})
-                return res
-        result = asyncio.run(_run())
-        ok = bool(result.get("ok"))
+        print("/run_code: received request, code_len=", len(code or ""))
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        run_dir = APP_DIR / "tmp_runs" / f"exec-{ts}-{uuid.uuid4()}"
+        try:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "run_code_input.py").write_text(code or "", encoding="utf-8")
+            _write_log(run_dir, [("Run Code Input:", (code or "")[:1000])])
+            print("/run_code: saved input at", str(run_dir))
+        except Exception:
+            pass
+        fb = _run_code_subprocess(run_dir, code, timeout_s)
+        ok = bool(fb.get("ok"))
+        try:
+            out_text = fb.get("output") or ""
+            files_list = fb.get("files") or []
+            (run_dir / "run_code_output.txt").write_text(out_text, encoding="utf-8")
+            (run_dir / "files.lst").write_text("\n".join(map(str, files_list)), encoding="utf-8")
+            _write_log(run_dir, [("Run Code Output:", out_text), ("Run Code Files:", "\n".join(map(str, files_list)))])
+            print("/run_code: tool returned ok=", ok, " output_len=", len(out_text), " files_count=", len(files_list))
+        except Exception:
+            pass
+        extra_files = []
+        try:
+            for name in ["run_code_input.py", "run_code_output.txt", "files.lst"]:
+                p = run_dir / name
+                if p.exists():
+                    extra_files.append(str(p.resolve()))
+        except Exception:
+            pass
+        print("/run_code: responding JSON, extra_files=", len(extra_files))
         return jsonify({
             "ok": ok,
-            "output": result.get("output") or "",
-            "images": result.get("images") or [],
-            "files": [],
+            "output": fb.get("output") or "",
+            "images": fb.get("images") or [],
+            "files": fb.get("files") or [],
             "error": None if ok else "execution failed",
-            "error_line": None,
-            "error_user_line": None,
-            "error_type": None,
+            "error_line": fb.get("error_line"),
+            "error_user_line": fb.get("error_user_line"),
+            "error_type": fb.get("error_type"),
         })
     except Exception as e:
+        print("/run_code: exception:", str(e))
         return jsonify({"ok": False, "error": str(e)})
 
 
@@ -877,7 +1148,20 @@ def test_response():
         }
     }
     metrics = {"prep_ms": 5, "llm_ms": 42, "post_ms": 3, "retries": 1, "timestamp": int(time.time()*1000)}
-    return jsonify({"ok": True, "response": sample, "metrics": metrics})
+    try:
+        code = sample["code"]
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        run_dir = APP_DIR / "tmp_runs" / f"selftest-{ts}-{uuid.uuid4()}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "run_code_input.py").write_text(code or "", encoding="utf-8")
+        fb = _run_code_subprocess(run_dir, code, 5)
+        out_text = fb.get("output") or ""
+        files_list = fb.get("files") or []
+        (run_dir / "run_code_output.txt").write_text(out_text, encoding="utf-8")
+        (run_dir / "files.lst").write_text("\n".join(map(str, files_list)), encoding="utf-8")
+        return jsonify({"ok": True, "response": sample, "metrics": metrics, "run": {"output": out_text, "files": files_list}})
+    except Exception:
+        return jsonify({"ok": True, "response": sample, "metrics": metrics})
 
 @app.route("/config_models", methods=["GET"])
 def config_models():
@@ -888,6 +1172,34 @@ def config_models():
         "reviewer_model": models.get("reviewer_model"),
         "thinker_model": models.get("thinker_model"),
     })
+
+@app.route("/status", methods=["GET"])
+def status():
+    report = {
+        "flask_server": "ok",
+        "mcp_server": "unknown",
+        "mcp_tools": [],
+        "mcp_resources": []
+    }
+    try:
+        script_path = str((APP_DIR 
+                           / "optics_mcp" 
+                           / "optics_server.py").resolve())
+        import asyncio
+        from fastmcp import Client as FastClient
+        client = FastClient(script_path)
+        async def _check():
+            async with client:
+                tools = await client.list_tools()
+                resources = await client.list_resources()
+                return tools, resources
+        tools, resources = asyncio.run(_check())
+        report["mcp_server"] = "connected"
+        report["mcp_tools"] = [getattr(t, "name", str(t)) for t in (tools or [])]
+        report["mcp_resources"] = [getattr(r, "name", str(r)) for r in (resources or [])]
+    except Exception as e:
+        report["mcp_server"] = f"error: {str(e)}"
+    return jsonify(report)
 
 
 if __name__ == "__main__":

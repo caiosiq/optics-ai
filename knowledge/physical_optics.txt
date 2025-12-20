@@ -1,0 +1,16 @@
+TOPIC: Wave Optics & Scalar Diffraction
+FORMALISM: Angular Spectrum Method (ASM) / FFT Propagation
+- Use for: Propagating fields between parallel planes (free space, apertures).
+- ALGORITHM:
+  1. Take FFT of field `U(x,y)`.
+  2. Multiply by Transfer Function `H(fx, fy) = exp(i * k * z * sqrt(1 - (lambda*fx)^2 - (lambda*fy)^2))`.
+  3. Take Inverse FFT.
+- SAMPLING CONSTRAINT: To avoid aliasing, `dx < lambda / (2 * NA)`. If propagating far distances, use Fraunhofer approximation instead.
+
+FORMALISM: Fraunhofer Diffraction (Far Field)
+- Formula: The far-field pattern is proportional to the Fourier Transform of the aperture function.
+- Scale factor: `x_screen = fx * lambda * z`.
+
+PITFALLS:
+- Zero-padding is critical for FFTs to prevent "circular convolution" artifacts (edges of beam wrapping around).
+- Ensure energy conservation (sum of `abs(U)**2`) remains constant during propagation.

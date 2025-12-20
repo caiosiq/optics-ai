@@ -1,0 +1,28 @@
+TOPIC: Scientific Python Coding Standards for Computational Optics
+
+[CRITICAL ANTI-PATTERNS - NEVER DO THESE]
+1. NO MATRIX INVERSION FOR RETRACING:
+   - Wrong: `M_back = np.linalg.inv(M_fwd)`
+   - Why: This implies negative distance propagation, which is unphysical for passive linear optics.
+   - Right: Construct `M_back` by multiplying component matrices in reverse order with positive distances.
+2. NO FOR LOOPS FOR FIELDS:
+   - Wrong: `for x in grid: E[x] = ...` (Too slow for 1024x1024 grids)
+   - Right: Use `numpy` vectorization: `E = np.exp(1j * k * Z)`.
+3. NO HARDCODED PATHS:
+   - Wrong: `plt.savefig("C:/Users/...")`
+   - Right: `plt.savefig("plot.png")` (The server handles the working directory).
+
+[BEST PRACTICES]
+1. UNITS & CONSTANTS:
+   - Define base units at the top: `mm = 1e-3`, `nm = 1e-9`.
+   - Perform all math in SI (meters). Convert only when printing/plotting.
+2. GRIDDING:
+   - Use `np.meshgrid(x, y, indexing='ij')` for matrix-indexing consistency (Row=Y, Col=X).
+   - Ensure sampling satisfies Nyquist: `dx < lambda / (2 * NA)`.
+3. VISUALIZATION:
+   - Use `plt.imshow(abs(field)**2, extent=[...], cmap='inferno')` for intensity.
+   - Always define `extent` correctly to match physical coordinates.
+4. OPTIMIZATION:
+   - Finding the optimal means to efficiently finding the set of parameters that maximize the desired output.
+   - When using `scipy.optimize`, always define `bounds`.
+   - Return large penalty values (e.g., `1e9`) for unphysical states (unstable cavities), do not return `NaN`.

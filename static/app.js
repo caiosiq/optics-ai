@@ -201,12 +201,21 @@ function renderLLMOutput(o, metrics, draftCode, draftRaw) {
   const summary = document.createElement('div')
   if (metrics) {
     const prep = metrics.prep_ms ?? 0
-    const llm = metrics.llm_ms ?? 0
+    const llm = metrics.llm_ms ?? (metrics.reviewer_ms ?? 0)
     const post = metrics.post_ms ?? 0
     const tries = metrics.retries ?? 1
     summary.className = 'muted'
     const conf = (typeof metrics.confidence === 'number') ? ` • confidence ${(metrics.confidence*100).toFixed(0)}%` : ''
-    summary.textContent = `timing: prep ${prep}ms • llm ${llm}ms • post ${post}ms • attempts ${tries}${conf}`
+    const total = metrics.total_ms ?? (prep + llm + post)
+    const thinker = metrics.thinker_ms ?? 0
+    const drafter = metrics.drafter_ms ?? 0
+    const reviewer = metrics.reviewer_ms ?? llm
+    let parts = [`total ${total}ms`]
+    if (thinker) parts.push(`thinker ${thinker}ms`)
+    if (drafter) parts.push(`drafter ${drafter}ms`)
+    if (reviewer) parts.push(`reviewer ${reviewer}ms`)
+    parts.push(`prep ${prep}ms`, `llm ${llm}ms`, `post ${post}ms`, `attempts ${tries}`)
+    summary.textContent = `timing: ${parts.join(' • ')}${conf}`
     summary.style.display = 'none'
   }
   const btn = document.createElement('button')

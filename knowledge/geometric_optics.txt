@@ -1,0 +1,18 @@
+TOPIC: Geometric Optics & Ray Tracing
+FORMALISM 1: Paraxial (ABCD Matrices)
+- Use for: Simple stability checks, first-order system design, Gaussian beams.
+- MATRIX ORDER: Light travels Left-to-Right, but Matrices multiply Right-to-Left.
+  - `M_system = M_last @ ... @ M_first`
+- COMMON MATRICES:
+  - Free Space (d): `[[1, d], [0, 1]]`
+  - Thin Lens (f): `[[1, 0], [-1/f, 1]]`
+  - Curved Interface (n1->n2, R): `[[1, 0], [(n1-n2)/(R*n2), n1/n2]]`
+
+FORMALISM 2: Exact Vector Ray Tracing
+- Use for: Aberrations, high-NA systems, non-paraxial rays.
+- STATE: Ray is defined by Position `r = [x, y, z]` and Direction Cosine `k = [kx, ky, kz]`.
+- SNELL'S LAW (Vector Form): `v_out = (n1/n2) * v_in + (gamma) * normal`, where gamma is derived from cross products. Do not use `theta1 = n2/n1 sin(theta2)` directly in 3D code.
+
+PITFALLS:
+- Don't mix paraxial and exact formulas.
+- Check sign conventions for Radius of Curvature (usually R>0 is convex from incident side).

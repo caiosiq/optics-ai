@@ -1,0 +1,14 @@
+TOPIC: Laser Cavity & Resonator Physics
+FORMALISM: Round-Trip ABCD Matrix stability.
+- CONDITION: Cavity is stable if `abs(trace(M_round_trip)) <= 2.0`.
+- BEAM WAIST: Solve for complex q-parameter: `1/q = (D-A)/(2B) - i * sqrt(1 - ( (A+D)/2 )^2 ) / B`.
+  - Waist `w0 = sqrt( -lambda / (pi * imag(1/q)) )`.
+
+GAIN PHYSICS (If requested):
+- Small Signal Gain: `G0 = exp(sigma * N * L)`.
+- Threshold: `R1 * R2 * exp(2 * g_th * L) = 1`.
+- Saturation Intensity: `Isat = h * freq / (sigma * tau)`.
+
+THERMAL LENSING:
+- Only significant for Pump Power > 1W (Solid State).
+- Model as a thin lens with `f_th = (K * A) / (P_heat * dn/dT)`.
