@@ -1,0 +1,18 @@
+.physics-separator {
+  margin: 20px 0;
+  padding: 12px;
+  background: rgba(102, 252, 241, 0.1);
+  border-left: 3px solid #66fcf1;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #66fcf1;
+  font-weight: 600;
+  animation: slideInRight 0.4s ease;
+}
+
+.physics-icon {
+  font-size: 18px;
+  animation: pulseGlow 2s infinite;
+}

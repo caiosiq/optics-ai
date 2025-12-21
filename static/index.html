@@ -6,38 +6,127 @@
     <title>AI Optics Agent</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Merriweather:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/physics.css" />
   </head>
   <body>
-    <div class="container">
-      <div class="header">
-        <div class="title">AI Optics Agent</div>
-        <div id="modelTag" class="tag" style="margin:0">model: not set</div>
+    <!-- Landing Overlay -->
+    <div id="landingOverlay" class="landing-overlay">
+      <div class="top-right-corner">
+        <button class="btn-ghost" onclick="app.startFreeChat()">Free Chat Mode ↗</button>
       </div>
-      <div class="chat glass">
-        <div id="messages"></div>
-        <div id="contextBar" class="context-bar" style="display:none"></div>
-        <div id="warningBar" class="warn-banner" style="display:none"></div>
-        <div class="controls">
-          <input id="input" type="text" placeholder="Type message" />
-          <button id="send">Send</button>
-          <button id="test">Test JSON Parse</button>
+      <div class="landing-card">
+        <h1 class="landing-title">What do you want to build today?</h1>
+        <div class="landing-options">
+          <button class="landing-btn" onclick="app.selectGoal('Fabry-Perot Interferometer')">Fabry-Perot Interferometer</button>
+          <button class="landing-btn" onclick="app.selectGoal('Optical Cavity')">Optical Cavity</button>
+          <button class="landing-btn" onclick="app.selectGoal('Laser Resonator')">Laser Resonator</button>
+          <div class="landing-custom">
+            <input type="text" id="customGoalInput" placeholder="Custom / Other..." onkeydown="if(event.key==='Enter') app.selectCustomGoal()">
+            <button onclick="app.selectCustomGoal()">→</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px; text-align: center;">
+            <p class="small" style="margin-bottom: 8px;">Already have a design?</p>
+            <button class="btn-ghost" onclick="document.getElementById('fileUpload').click()">Load Design JSON</button>
+            <input type="file" id="fileUpload" style="display:none" accept=".json" onchange="app.handleFileUpload(event)">
+        </div>
+
+        <div id="inventorySection" class="inventory-section" style="display:none;">
+          <div class="divider"></div>
+          <h3 style="color:#66fcf1; margin-bottom:8px;">What is in your lab?</h3>
+          <p class="small" style="margin-bottom:8px;">List available mirrors, lenses, lasers, and distances.</p>
+          <textarea id="inventoryInput" class="inventory-input" placeholder="e.g., Two concave mirrors (R=100mm), HeNe Laser (632.8nm), Optical table..."></textarea>
+          <div class="controls" style="justify-content:flex-end;">
+            <button onclick="app.cancelBuild()" class="btn-ghost">Back</button>
+            <button onclick="app.confirmBuild()">Start Design Phase</button>
+          </div>
         </div>
       </div>
     </div>
-    <div id="modal" class="modal">
-      <div class="modal-card">
-        <div class="title" style="margin-bottom:8px">Select Reviewer Model</div>
-        <select id="modelSelect">
-          <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
-          <option value="openai/gpt-4.1">GPT-4.1</option>
-          <option value="openai/gpt-5">GPT-5</option>
-          <option value="google/gemini-3-pro-preview">Gemini 3 Pro Preview</option>
-        </select>
-        <div class="controls" style="margin-top:12px">
-          <button id="startChat">Start Chat</button>
+
+    <div class="app-layout">
+      <!-- Sidebar for State Machine -->
+      <div id="sidebar" class="sidebar" style="display:none">
+        <div class="sidebar-header">
+          <div class="tag">Design Phase</div>
+          <h3 id="designGoalTitle" style="margin:4px 0; font-size:16px;">Goal</h3>
+        </div>
+        <div id="checklistItems" class="checklist">
+          <!-- Items injected here -->
+        </div>
+        <div id="sidebarStatus" class="sidebar-status">Waiting for input...</div>
+        <div id="sidebarActions" class="sidebar-actions" style="margin-top: 16px; display: none; gap: 8px; flex-direction: column;">
+            <button onclick="app.downloadDesign()" class="btn-ghost" style="width: 100%;">Download JSON</button>
+            <button onclick="app.proceedToConstruction()" style="width: 100%;">Proceed to Construction</button>
         </div>
       </div>
+
+      <div class="main-content">
+        <!-- Progress Bar -->
+        <div class="progress-container" style="display:none;" id="progressContainer">
+            <div class="progress-step active" id="step-design">
+                <div class="step-circle">1</div>
+                <div class="step-label">Design Stage</div>
+            </div>
+            <div class="progress-line" id="line-1"></div>
+            <div class="progress-step" id="step-construction">
+                <div class="step-circle">2</div>
+                <div class="step-label">Construction Stage</div>
+            </div>
+            <div class="progress-line" id="line-2"></div>
+            <div class="progress-step" id="step-assembly">
+                <div class="step-circle">3</div>
+                <div class="step-label">Robot Assembly</div>
+            </div>
+        </div>
+
+        <!-- Construction View -->
+        <div id="constructionView" class="container" style="display:none">
+            <div class="header">
+                <div class="title">Construction Phase</div>
+                <div class="tag">Lab Setup</div>
+            </div>
+            
+            <div style="display: flex; gap: 24px; height: 100%; overflow: hidden;">
+                <!-- Left: Specs -->
+                <div class="glass" style="flex: 1; padding: 24px; display: flex; flex-direction: column; overflow-y: auto;">
+                    <h3 style="margin-top: 0; color: #66fcf1;">Design Specifications</h3>
+                    <p class="small">Finalized parameters for assembly.</p>
+                    <div id="constructionSummary" style="margin-top: 16px;"></div>
+                </div>
+
+                <!-- Right: Construction Chat -->
+                <div class="chat glass" style="flex: 2; display: flex; flex-direction: column;">
+                    <div id="constructionMessages" style="flex: 1; overflow-y: auto; padding-right: 8px;"></div>
+                    <div class="controls">
+                        <input id="constructionInput" type="text" placeholder="Ask about assembly..." onkeydown="if(event.key==='Enter') app.sendConstruction()" />
+                        <button onclick="app.sendConstruction()">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="designView" class="container">
+          <div class="header">
+            <div class="title">AI Optics Agent</div>
+            <div id="modelTag" class="tag" style="margin:0">model: not set</div>
+          </div>
+          <div class="chat glass">
+            <div id="messages"></div>
+            <div id="contextBar" class="context-bar" style="display:none"></div>
+            <div id="warningBar" class="warn-banner" style="display:none"></div>
+            <div class="controls">
+              <input id="input" type="text" placeholder="Type message" />
+              <button id="send">Send</button>
+              <button id="test">Test JSON Parse</button>
+            </div>
+          </div>
+        </div>
+        <!-- End Design View -->
+      </div>
     </div>
+
     <script src="/static/app.js"></script>
   </body>
 </html>
