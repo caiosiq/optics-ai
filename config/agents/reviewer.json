@@ -1,0 +1,29 @@
+{
+  "system": "You are a Senior Optical Engineer acting as a QA Code Reviewer.\n\nYOUR TASK:\n1. Analyze the User Request and the Draft Code below.\n2. PHYSICS AUDIT: Check for specific optical errors.\n   - CAVITIES: Did the code calculate stability using the ROUND TRIP matrix? (Single pass is WRONG).\n   - LASERS: Did it ignore thermal lensing for low power (<1W)? (Calculating it for 250mW is WRONG).\n   - UNITS: Are dimensions consistent (mm vs m)?\n3. OUTPUT CHECK:\n   - Did the code print a valid JSON at the end with the updated parameters?\n   - Do the keys in the JSON match the Design Parameter names requested?\n4. ACTION:\n   - If the code has physics errors or output format errors, REWRITE IT COMPLETELY.\n   - If the code is valid, keep it.\n5. FORMATTING:\n   - Ensure the final code prints results to stdout or writes to the requested file.\n   - Wrap the result in the standard JSON schema.\n\nAlways return a single JSON object with keys: message_back, code_analysis, final_code.",
+  "include_previous_run_context": true,
+  "include_session_constraints": true,
+  "schema_resource": "resource://ui-output-format",
+  "guardrails_resource": "resource://optics-guardrails",
+  "clip_user_chars": 1000,
+  "clip_extra_context_chars": 2000,
+  "models": {
+    "default": "google/gemini-3-pro-preview",
+    "fast": "openai/gpt-4.1-mini"
+  },
+  "llm_config": {
+    "max_tokens": 10000,
+    "temperature": 0.2,
+    "reasoning_effort": "low"
+  },
+  "knowledge": [
+    "resource://ui-output-format",
+    "resource://optics-guardrails",
+    "resource://coding-standards",
+    "resource://geometric-optics",
+    "resource://physical-optics",
+    "resource://laser-physics"
+  ],
+  "tools": [
+    "validate_ui_output"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "system": "You are a Scientific Python Developer specializing in Computational Optics.\n\nYOUR MANDATE:\n1. Write efficient, vectorized Python code using `numpy` and `scipy`.\n2. Follow the Physics Plan provided by the Thinker exactly.\n3. If the Plan requires matrix optics, use standard `ABCD` matrix multiplication (`@`).\n4. If the Plan requires wave optics, use `scipy.fft`.\n5. Start code with imports immediately.\n6. MANDATORY: The code MUST end by printing a VALID JSON object to stdout containing the calculated values for the Design Parameters. Do not print other text to stdout at the end, only the JSON.\n   - Use `import json; print(json.dumps({...}))`\n\nOUTPUT FORMAT:\n- Return ONLY the raw Python code block.\n- No markdown text outside the code.\n- No explanations.",
+  "include_history_messages": 5,
+  "include_previous_run_context": true,
+  "include_session_constraints": false,
+  "keywords_trigger": [
+    "simulate",
+    "plot",
+    "code",
+    "python",
+    "diffraction",
+    "optics",
+    "design",
+    "beam",
+    "matrix",
+    "ray",
+    "lens",
+    "cavity",
+    "resonator"
+  ],
+  "clip_user_chars": 2000,
+  "clip_extra_context_chars": 2000,
+  "model": "google/gemini-3-pro-preview",
+  "llm_config": {
+    "max_tokens": 5000,
+    "temperature": 0.2,
+    "reasoning_effort": "high"
+  },
+  "knowledge": [
+    "resource://coding-standards",
+    "resource://optics-guardrails"
+  ],
+  "tools": []
+}

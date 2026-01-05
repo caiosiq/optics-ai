@@ -1,0 +1,43 @@
+# Documentation: Optical Lab Robot API (v1.0)
+
+## Overview
+This library (`lab_automation.builder`) provides a high-level abstraction for the xArm robot used in the optics laboratory. It handles inverse kinematics, AprilTag recognition, and coordinate transformations between the "Optical Design Space" (relative to the first mirror) and the "Robot World Space" (absolute coordinates).
+
+## Class: OpticalBuilderBot
+### Initialization
+`bot = OpticalBuilderBot(calibration_offset_x, calibration_offset_y, safe_height=150)`
+
+- **calibration_offset_x/y**: The coordinates (in mm) of the Optical Table's origin (0,0) relative to the Robot Base. 
+- **safe_height**: The Z-height (in mm) for travel moves to avoid colliding with optical posts.
+
+### Core Methods
+
+#### 1. fetch_component(component_type)
+Locates and picks up an optical component from the inventory bay using the camera and AprilTags.
+- **Args**: 
+    - `component_type` (str): Must match standard types: "Mirror", "Lens", "Crystal", "Pump", "Detector".
+- **Behavior**: 
+    - Identifies the specific AprilTag ID for the component (e.g., ID 2 for Mirrors).
+    - Aligns the gripper using visual servoing.
+    - Picks up the object and moves to `safe_height`.
+- **Returns**: `True` if successful, raises `ComponentNotFoundError` if fails.
+
+#### 2. place_component(optical_x, optical_y, orientation_deg)
+Places the currently held component onto the breadboard at the specified coordinates.
+- **Args**:
+    - `optical_x` (float): X position in mm relative to the optical setup origin.
+    - `optical_y` (float): Y position in mm relative to the optical setup origin.
+    - `orientation_deg` (float): Rotation in degrees (0 = aligned with beam path).
+- **Behavior**:
+    - transforms (optical_x, optical_y) -> (robot_x, robot_y) using the calibration offsets.
+    - Moves arm to position.
+    - Lowers to table surface and releases gripper.
+    - Returns to `safe_height`.
+
+#### 3. finish_assembly()
+- Moves the robot to the "Home" position and releases torque to ensure safety.
+
+## Coordinate System Reference
+- **Optical Coordinates**: (0,0) is defined as the center of the first component (usually the Pump or Input Coupler). +X follows the beam path.
+- **Robot Coordinates**: (0,0) is the base of the robot arm.
+- **Conversion Logic**: The `OpticalBuilderBot` class automatically adds `calibration_offset` to all input coordinates. DO NOT manually add offsets in your script.

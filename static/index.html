@@ -26,10 +26,20 @@
           </div>
         </div>
         
-        <div style="margin-top: 24px; text-align: center;">
-            <p class="small" style="margin-bottom: 8px;">Already have a design?</p>
-            <button class="btn-ghost" onclick="document.getElementById('fileUpload').click()">Load Design JSON</button>
-            <input type="file" id="fileUpload" style="display:none" accept=".json" onchange="app.handleFileUpload(event)">
+        <div style="margin-top: 32px; display: flex; gap: 20px; justify-content: center;">
+            <div style="text-align: center;">
+                <button class="btn-ghost" onclick="document.getElementById('uploadDesign').click()">Load Design JSON</button>
+                <div style="font-size: 11px; color: #8fb7b9; margin-top: 6px; opacity: 0.7;">Skip to Construction</div>
+                <input type="file" id="uploadDesign" style="display:none" accept=".json" onchange="app.handleFileUpload(event, 'CONSTRUCTION')">
+            </div>
+            
+            <div style="width: 1px; background: rgba(255,255,255,0.1);"></div>
+
+            <div style="text-align: center;">
+                <button class="btn-ghost" onclick="document.getElementById('uploadPlan').click()">Load Lab Plan</button>
+                <div style="font-size: 11px; color: #8fb7b9; margin-top: 6px; opacity: 0.7;">Skip to Assembly</div>
+                <input type="file" id="uploadPlan" style="display:none" accept=".json" onchange="app.handleFileUpload(event, 'ROBOT_ASSEMBLY')">
+            </div>
         </div>
 
         <div id="inventorySection" class="inventory-section" style="display:none;">
@@ -96,12 +106,72 @@
                     <div id="constructionSummary" style="margin-top: 16px;"></div>
                 </div>
 
-                <!-- Right: Construction Chat -->
-                <div class="chat glass" style="flex: 2; display: flex; flex-direction: column;">
-                    <div id="constructionMessages" style="flex: 1; overflow-y: auto; padding-right: 8px;"></div>
-                    <div class="controls">
-                        <input id="constructionInput" type="text" placeholder="Ask about assembly..." onkeydown="if(event.key==='Enter') app.sendConstruction()" />
-                        <button onclick="app.sendConstruction()">Send</button>
+                <!-- Right: Lab Plan Generation -->
+                <div class="glass" style="flex: 2; padding: 24px; display: flex; flex-direction: column; overflow: hidden;">
+                    <h3 style="margin-top: 0; color: #66fcf1;">Lab Plan</h3>
+                    
+                    <!-- Action Area -->
+                    <div id="constructionActions" style="margin-bottom: 16px;">
+                        <button onclick="app.generateLabPlan()" id="btnGeneratePlan" style="width:100%; padding: 12px; font-size: 16px;">Generate Lab Plan</button>
+                    </div>
+
+                    <!-- Loading -->
+                    <div id="constructionLoading" style="display:none; color: #8fb7b9; text-align: center; padding: 20px;">
+                        <div class="loader" style="margin: 0 auto 10px auto;"></div>
+                        Constructing layout...
+                    </div>
+
+                    <!-- Plan Display -->
+                    <div id="labPlanContainer" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; display: none;">
+                        <!-- Plan content injected here -->
+                    </div>
+
+                    <!-- Post-Generation Actions -->
+                    <div id="postPlanActions" style="margin-top: 16px; display: none; gap: 12px;">
+                        <button onclick="app.downloadLabPlan()" class="btn-ghost" style="flex: 1;">Download Plan</button>
+                        <button onclick="app.proceedToAssembly()" style="flex: 1;">Proceed to Assembly</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assembly View -->
+        <div id="assemblyView" class="container" style="display:none">
+            <div class="header">
+                <div class="title">Robot Assembly Phase</div>
+                <div class="tag">Execution</div>
+            </div>
+
+            <div style="display: flex; gap: 24px; height: 100%; overflow: hidden;">
+                <!-- Left: Loaded Plan -->
+                <div class="glass" style="flex: 1; padding: 24px; display: flex; flex-direction: column; overflow: hidden;">
+                    <h3 style="margin-top: 0; color: #66fcf1;">Assembly Sequence</h3>
+                    <p class="small">Components loaded from plan.</p>
+                    <div id="assemblyPlanContainer" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; margin-top: 16px;">
+                        <!-- Table injected here -->
+                    </div>
+                </div>
+
+                <!-- Right: Code Generation -->
+                <div class="glass" style="flex: 1; padding: 24px; display: flex; flex-direction: column;">
+                    <h3 style="margin-top: 0; color: #66fcf1;">Robot Integration</h3>
+                    <p class="small">Generate executable Python code.</p>
+
+                    <div style="margin-top: 24px; margin-bottom: 24px;">
+                         <button onclick="app.generateRobotCode()" id="btnGenerateRobot" style="padding: 16px 32px; font-size: 18px; width: 100%;">Generate Robot Code</button>
+                    </div>
+                    
+                    <div id="assemblyLoading" style="display:none; color: #8fb7b9; margin-bottom: 20px;">
+                        <div class="loader" style="margin-right: 10px;"></div>
+                        Generating control script...
+                    </div>
+
+                    <div id="robotCodeContainer" style="flex: 1; overflow: hidden; display: none; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="color: #ccc; font-size: 12px; text-transform: uppercase; font-weight: 700;">Python Script</span>
+                            <button onclick="app.downloadRobotCode()" class="btn-ghost" style="padding: 6px 12px; font-size: 12px;">Download .py</button>
+                        </div>
+                        <pre style="flex: 1; margin: 0;"><code id="robotCodeBlock" style="color: #a8b2c1;"></code></pre>
                     </div>
                 </div>
             </div>
@@ -119,7 +189,6 @@
             <div class="controls">
               <input id="input" type="text" placeholder="Type message" />
               <button id="send">Send</button>
-              <button id="test">Test JSON Parse</button>
             </div>
           </div>
         </div>

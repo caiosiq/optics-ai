@@ -1,0 +1,40 @@
+# Lab Architecture & Constraints
+
+## Physical Environment
+The experiment takes place on an **Optical Breadboard** with a robotic arm manipulator positioned at the center.
+
+### Dimensions & Coordinate System
+- **Coordinate Origin**: (0, 0) is at the geometric center of the breadboard (and the robot base).
+- **Working Area**: A square region with side length **122 cm**.
+  - X range: [-61, 61] cm
+  - Y range: [-61, 61] cm
+- **Units**: All physical coordinates should be in **centimeters (cm)**.
+
+### Robotic Constraints
+- **Robot Base Footprint**: A circular "no-go" zone at the center.
+  - Radius: **15 cm**
+  - **Constraint**: No optical component can be placed within $\sqrt{x^2 + y^2} < 15$.
+- **Robot Reach**: The maximum effective reach of the robotic hand.
+  - Radius: **61 cm**
+  - **Constraint**: All optical components must be placed within $\sqrt{x^2 + y^2} \le 61$.
+  - Note: This matches the half-width of the breadboard, so the circular reach effectively covers the inscribed circle of the square board.
+
+### Component Footprints
+Every optical element (Mirror, Lens, Crystal, Detector, etc.) is mounted in a standard encasing.
+- **Width**: 7.5 cm (Transverse to optical axis, usually)
+- **Length**: 6.4 cm (Along optical axis)
+- **Placement**: The (x, y) coordinate refers to the **center** of the component footprint.
+- **Collision Avoidance**: Components must not overlap with each other or the robot footprint.
+
+## Task: Lab Plan Generation
+When generating a Lab Plan:
+1. **Translate** the relative distances from the "Design Stage" (e.g., "d1 = 10cm", "Cavity Length = 100mm") into absolute **(x, y)** coordinates on the breadboard.
+2. **Optimize** the layout to:
+   - Fit within the Robot Reach (R < 61).
+   - Avoid the Robot Footprint (R > 15).
+   - Ensure a straight optical path where possible, or use mirrors to fold the path if it exceeds the linear space.
+3. **Output**: A JSON structure listing each component with:
+   - `id`: Unique identifier (e.g., "Mirror_1")
+   - `type`: Component type
+   - `position`: {"x": float, "y": float} (in cm)
+   - `orientation`: float (degrees, 0 = facing +X)

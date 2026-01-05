@@ -1,0 +1,111 @@
+{
+  "component_properties": [
+    {
+      "description": "Maximum optical power of the pump source",
+      "name": "Pump Power",
+      "status": "missing",
+      "unit": "mW",
+      "value": 250
+    },
+    {
+      "description": "Beam radius (1/e²) at the input face of the crystal",
+      "name": "Pump Beam Radius",
+      "status": "missing",
+      "unit": "mm",
+      "value": 0.5
+    },
+    {
+      "description": "Chemical composition of the laser crystal",
+      "name": "Gain Medium Material",
+      "status": "missing",
+      "unit": "string",
+      "value": "Nd:YAG"
+    },
+    {
+      "description": "Percentage of Neodymium doping in the YAG host",
+      "name": "Doping Concentration",
+      "status": "missing",
+      "unit": "%",
+      "value": 1
+    },
+    {
+      "description": "Length of the gain medium along the optical axis",
+      "name": "Crystal Thickness",
+      "status": "missing",
+      "unit": "mm",
+      "value": 5
+    },
+    {
+      "description": "Focal length of the lens used to focus the pump beam",
+      "name": "Pump Focusing Lens Focal Length",
+      "status": "missing",
+      "unit": "m",
+      "value": 0.1
+    },
+    {
+      "description": "Reflectivity of the input mirror at the lasing wavelength (1064 nm)",
+      "name": "Input Coupler Reflectivity",
+      "status": "missing",
+      "unit": "%",
+      "value": 99
+    },
+    {
+      "description": "Radius of Curvature of the input mirror",
+      "name": "Input Coupler ROC",
+      "status": "set",
+      "unit": "mm",
+      "value": "infinity"
+    },
+    {
+      "description": "Reflectivity of the output mirror at the lasing wavelength",
+      "name": "Output Coupler Reflectivity",
+      "status": "missing",
+      "unit": "%",
+      "value": 99.74
+    },
+    {
+      "description": "Radius of Curvature of the output mirror",
+      "name": "Output Coupler ROC",
+      "status": "missing",
+      "unit": "cm",
+      "value": 15
+    },
+    {
+      "description": "Target emission wavelength of the laser",
+      "name": "Lasing Wavelength",
+      "status": "missing",
+      "unit": "nm",
+      "value": 1064
+    }
+  ],
+  "design_parameters": [
+    {
+      "description": "Total distance between the Input Coupler and Output Coupler",
+      "name": "Cavity Length",
+      "status": "set",
+      "unit": "mm",
+      "value": 79.34
+    },
+    {
+      "description": "Distance of the crystal front face from the Input Coupler",
+      "name": "Crystal Position",
+      "status": "set",
+      "unit": "mm",
+      "value": 14.97
+    },
+    {
+      "description": "Distance of the focusing lens from the Input Coupler/Crystal",
+      "name": "Pump Lens Position",
+      "status": "set",
+      "unit": "mm",
+      "value": 52.5
+    }
+  ],
+  "design_scheme": "A longitudinal pumping scheme is employed. The pump beam passes through a focusing lens (f=0.1m) and enters the cavity through the Input Coupler (IC). The Nd:YAG crystal (5mm thick) is placed immediately after the IC. The cavity is formed by the IC (likely flat or matched to pump focus, though ROC is unspecified) and the Output Coupler (OC) with a 15cm ROC. The cavity length must be shorter than the OC's ROC (15cm) to ensure stability in a plano-concave or hemispherical configuration.",
+  "feasibility": true,
+  "goal": "Optical Cavity",
+  "history": [],
+  "inventory": "Pump\npower: 250 mW (maximum) Gain medium: Nd:YAG crystal, 1% doping concentration Crys-\ntal thickness: 5 mm Pump beam radius (1/e²): 0.5 mm at input face Lens focal length (used\nto focus the pump before the cavity): 0.1 m Input coupler reflectivity: 99% Output cou-\npler reflec- tivity: 99.74% Output coupler radius of curvature (ROC): 15 cm Wavelength:\n1064 nm (fundamental transition)",
+  "reason": "The inventory provides all the critical components for a basic solid-state laser cavity: a pump source, a gain medium (Nd:YAG), focusing optics, and cavity mirrors (Input and Output Couplers). While specific details like the Input Coupler's ROC are missing (often flat in simple designs), a stable cavity can be formed with the provided Output Coupler ROC of 15 cm.",
+  "stage": "DESIGN"
+}
