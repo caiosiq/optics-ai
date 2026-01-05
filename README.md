@@ -1,118 +1,123 @@
+# AI Optics Agent: A Cyber-Physical System for Optical Experiment Automation
 
-# 🔭 AI Optics Agent UI
+## Abstract
 
-**A high-performance, local workspace for designing and simulating optical systems.**
-
-This tool orchestrates a multi-agent AI pipeline to solve physics problems. It separates **reasoning** (Physics) from **implementation** (Python Code) to generate rigorous, runnable simulations. It enforces strict JSON outputs, allowing the UI to render interactive elements, execute code locally, and visualize results instantly.
-
----
-
-## 🚀 Quick Start
-
-1. **Install Dependencies**
-   **Bash**
-
-   ```
-   pip install -r requirements.txt
-   ```
-2. Configure API
-   Paste your OpenRouter API key into openrouter_api.txt (ensure this file is git-ignored).
-3. **Run the Server**
-   **Bash**
-
-   ```
-   python server.py
-   ```
-4. Open the UI
-   Navigate to http://127.0.0.1:8000/ in your browser.
+The AI Optics Agent is a specialized computational framework designed to automate the lifecycle of optical experimentation. By integrating Large Language Model (LLM) reasoning with a rigorous Cyber-Physical System (CPS) architecture, the system orchestrates the transition from theoretical design to physical implementation. The architecture enforces strict state management and sequential processing to ensure the generation of valid, physically realizable experimental parameters and robotic control sequences.
 
 ---
 
-## 🧠 How It Works: The "Thinker-Drafter-Reviewer" Pipeline
+## System Architecture
 
-Unlike standard chat interfaces, this agent does not just "guess" code. When you ask for a simulation, it triggers a specialized three-step chain:
+The core functionality is governed by a finite state machine that transitions through four distinct operational stages. Each stage is managed by specialized algorithmic agents and pipelines to ensure data integrity and physical safety.
 
-1. **🤔 The Thinker (Physicist)**
-   * **Role:** Analyzes your request to determine the physical regime (e.g., Geometric Optics vs. Scalar Diffraction).
-   * **Output:** A rigorous "Physics Blueprint" listing formulas, constants, and constraints (e.g., "Use Round-Trip ABCD Matrix"). It writes  **no code** .
-   * *Model:* Fast Reasoning (e.g., Gemini 1.5 Flash).
-2. **💻 The Drafter (Scientific Coder)**
-   * **Role:** Translates the Blueprint into efficient Python code.
-   * **Output:** Raw, runnable Python (using `numpy`, `scipy`, `matplotlib`).
-   * *Model:* Fast Coding (e.g., Gemini 1.5 Flash or Grok-Beta).
-3. **🔎 The Reviewer (QA Engineer)**
-   * **Role:** Validates the physics and syntax.
-   * **Action:** If the Drafter used the wrong matrix order, the Reviewer fixes it.
-   * **Output:** A structured JSON object containing the final code, explanation, and system parameters.
-   * *Model:* High Intelligence (e.g., GPT-4o).
+### 1. Feasibility Assessment Stage
+*   **Module:** `stages/feasibility.py`
+*   **Objective:** To evaluate the physical viability of the proposed experiment against defined constraints and available inventory.
+*   **Mechanism:** The `FeasibilityAgent` analyzes the user's intent and the provided inventory list. It performs a semantic and physical cross-check to issue a binary determination (GO/NO-GO) regarding the experiment's safety and realizability.
 
-*(Note: For simple non-coding questions, the pipeline skips the first two steps for speed.)*
+### 2. Theoretical Design Stage
+*   **Module:** `stages/design.py`
+*   **Objective:** To generate a rigorous physical simulation and establish theoretical parameters.
+*   **Pipeline:** `ArchitectPipeline`
+    *   **Physics Reasoning Engine:** Determines the applicable physical regime (e.g., Geometric vs. Wave Optics) and identifies necessary mathematical constraints.
+    *   **Simulation Generation:** Synthesizes executable Python code using scientific libraries (`numpy`, `scipy`) to model the optical system.
+    *   **Validation:** A dedicated review process verifies the physical accuracy and syntactical correctness of the generated model.
+*   **Output:** A validated `DesignState` object containing simulation results and optimized design parameters.
 
----
+### 3. Construction Planning Stage
+*   **Module:** `stages/construction.py`
+*   **Objective:** To translate theoretical design parameters into a spatial layout compatible with physical laboratory constraints.
+*   **Pipeline:** `ConstructionPipeline`
+    *   **Mechanism:** The `ConstructorAgent` maps relative optical path lengths and component sequences to absolute coordinates ($x, y, \theta$) on the optical table frame.
+*   **Output:** A `LabPlan` JSON structure defining the precise spatial configuration of all optical components.
 
-## ✨ Key Features
-
-* **Structured Output:** Agents must return strict JSON. The UI separates natural language, code, and data tables automatically.
-* **Local Code Execution:**
-  * Run generated simulations server-side in a sandbox.
-  * Auto-captures `plt.show()` plots and displays them inline.
-  * Auto-lists generated files (CSV, TXT) for download or context injection.
-* **Smart Context Memory:**
-  * **Session Constraints:** Automatically extracts key numbers (wavelengths, radii) from your chat history to keep the agent focused.
-  * **Result Injection:** Click "Add to context" on any file or output to feed it back into the next prompt.
-* **Robust Architecture:**
-  * Built on **Flask** (Backend) and **FastMCP** (Model Context Protocol).
-  * Uses a local MCP server (`optics_mcp`) to expose file reading tools and validation schemas efficiently.
+### 4. Robotic Integration Stage
+*   **Module:** `stages/robot.py`
+*   **Objective:** To automate the physical assembly of the experiment using robotic manipulators.
+*   **Pipeline:** `AssemblyPipeline`
+    *   **Mechanism:** The `RoboticsEngineerAgent` ingests the `LabPlan` and generates a control script compliant with the specific robotic API (e.g., xArm SDK).
+*   **Output:** An executable Python script (`robot_assembly.py`) enabling the robotic arm to place components according to the generated layout.
 
 ---
 
-## ⚙️ Configuration
+## Software Organization
 
-You can tune the behavior of every agent in `pipeline_context.json`.
+The repository follows a modular architecture, separating agentic reasoning, core infrastructure, and interface logic.
 
-| **Section**      | **Description**                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| **`models`**   | Select the specific LLMs for Thinker, Drafter, and Reviewer (must be OpenRouter IDs). |
-| **`thinker`**  | System prompts and constraints for the physics planning stage.                        |
-| **`drafter`**  | Rules for code generation (e.g., "No Markdown," "Use Numpy").                         |
-| **`reviewer`** | Validation rules and strict JSON schema enforcement.                                  |
-| **`llm`**      | Fine-tune temperature and token limits for each stage.                                |
-
-**Example Model Config:**
-
-**JSON**
-
-```
-"models": {
-  "thinker_model": "google/gemini-flash-1.5",
-  "drafter_model": "google/gemini-flash-1.5",
-  "reviewer_model": "openai/gpt-4o"
-}
+```text
+/
+├── agents/             # Implementation of individual AI agents and their logic
+├── config/             # Configuration files for system prompts and model parameters
+├── core/               # Core infrastructure components
+│   ├── llm.py          # Abstracted interface for LLM API interaction
+│   ├── session.py      # Session state management and request routing
+│   └── state.py        # Formal schema definitions for system state (Pydantic models)
+├── knowledge/          # Contextual knowledge base and API specifications
+├── optics_mcp/         # Local Model Context Protocol (MCP) server implementation
+├── pipelines/          # Linear workflows coordinating multi-agent execution
+├── stages/             # Finite State Machine logic implementation
+├── static/             # Frontend application assets (HTML/JS/CSS)
+└── server.py           # Flask backend application entry point
 ```
 
 ---
 
-## 📂 Project Structure
+## Core Components
 
-* **`server.py`** : The main Flask application. Handles the agent pipeline, OpenRouter calls, and code execution.
-* **`optics_mcp/`** : The local Model Context Protocol server.
-* `optics_server.py`: Defines resources (`ui-output-format`) and tools (`validate_json`) used by the LLM.
-* **`static/`** : Frontend assets (HTML/JS/CSS).
-* **`saved_json/`** : Where final designs are saved.
-* **`tmp_runs/`** : Temporary sandbox directories for code execution.
+### The Server (`server.py`)
+A lightweight Flask application serving as the interface layer. It manages HTTP endpoints for session initialization, real-time communication streams (Server-Sent Events), state transitions, and sandboxed code execution.
+
+### Session Management (`core/session.py`)
+The central controller of the application. The `Session` class persists conversation history, maintains the current `DesignState`, and routes execution to the appropriate `Stage` handler based on the current system state.
+
+### User Interface (`static/`)
+A Single Page Application (SPA) designed for real-time interaction. It visualizes the state machine's progress, renders simulation outputs (plots, code blocks), and provides controls for parameter verification and file management.
 
 ---
 
-## 🛠️ Troubleshooting
+## Deployment
 
-**"The agent is writing code but it's not appearing."**
+### Prerequisites
+*   Python 3.10 or higher
+*   Valid OpenRouter API credentials
 
-* Check the console logs. The Drafter might be hitting a `tool_call` issue. Ensure your `server.py` has the extraction logic to handle "Agentic" model outputs.
+### Installation Procedure
 
-**"The physics seems wrong."**
+1.  **Repository Setup**
+    Clone the repository to the local environment.
 
-* Check the **Thinker's** output in the logs. If the blueprint is wrong, the code will be wrong. You can edit the Thinker's system prompt in `pipeline_context.json` to be stricter about specific physical laws.
+2.  **Dependency Installation**
+    Execute the following command to install required packages:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-**"Response Error 429/404"**
+3.  **API Configuration**
+    Create a file named `openrouter_api.txt` in the root directory and populate it with the API key.
 
-* Ensure your model IDs in `pipeline_context.json` are valid OpenRouter endpoints. Avoid `:free` endpoints for production use as they rate-limit frequently.
+### Execution
+
+1.  **Initialize Server**
+    ```bash
+    python server.py
+    ```
+
+2.  **Access Interface**
+    Navigate to `http://localhost:8001` via a web browser.
+
+---
+
+## Configuration and Extensibility
+
+System behavior can be modified via configuration files located in the `config/` directory.
+
+*   **Agent Configuration (`config/agents/*.json`)**: Defines the system prompts, roles, and operational constraints for each agent.
+*   **Global Settings (`core/config.py`)**: Manages model selection and global system parameters.
+
+### Development Workflow
+
+To extend the system's capabilities:
+
+1.  **Stage Implementation**: Define a new class in `stages/` implementing the `run()` method and register it within `core/session.py`.
+2.  **Agent Logic**: Implement new agent classes in `agents/` and define their pipelines in `pipelines/`.
+3.  **Interface Adaptation**: Update `static/app.js` to render the new stage's state and controls.
