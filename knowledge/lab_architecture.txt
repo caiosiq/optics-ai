@@ -8,6 +8,7 @@ The experiment takes place on an **Optical Breadboard** with a robotic arm manip
 - **Working Area**: A square region with side length **122 cm**.
   - X range: [-61, 61] cm
   - Y range: [-61, 61] cm
+  - There is a pump laser positioned at the Y=30cm line which can be used for experiments that require a pump.
 - **Units**: All physical coordinates should be in **centimeters (cm)**.
 
 ### Robotic Constraints
@@ -24,7 +25,7 @@ Every optical element (Mirror, Lens, Crystal, Detector, etc.) is mounted in a st
 - **Width**: 7.5 cm (Transverse to optical axis, usually)
 - **Length**: 6.4 cm (Along optical axis)
 - **Placement**: The (x, y) coordinate refers to the **center** of the component footprint.
-- **Collision Avoidance**: Components must not overlap with each other or the robot footprint.
+- **Collision Avoidance**: All elements fit inside their encasing, and the encasings must not overlap with each other or with the robot footprint.
 
 ## Task: Lab Plan Generation
 When generating a Lab Plan:

@@ -93,7 +93,8 @@ A Single Page Application (SPA) designed for real-time interaction. It visualize
     ```
 
 3.  **API Configuration**
-    Create a file named `openrouter_api.txt` in the root directory and populate it with the API key.
+    Create a file named `openrouter_api.txt` in the root directory and populate it with your OpenRouter API key.
+    *(Note: Future versions will support `.env` configuration)*
 
 ### Execution
 
@@ -103,7 +104,7 @@ A Single Page Application (SPA) designed for real-time interaction. It visualize
     ```
 
 2.  **Access Interface**
-    Navigate to `http://localhost:8001` via a web browser.
+    Navigate to `http://localhost:8501` via a web browser.
 
 ---
 

@@ -15,7 +15,7 @@ This library (`lab_automation.builder`) provides a high-level abstraction for th
 #### 1. fetch_component(component_type)
 Locates and picks up an optical component from the inventory bay using the camera and AprilTags.
 - **Args**: 
-    - `component_type` (str): Must match standard types: "Mirror", "Lens", "Crystal", "Pump", "Detector".
+    - `component_type` (str): Must match standard types: "Mirror", "Lens", "Crystal", "Detector".
 - **Behavior**: 
     - Identifies the specific AprilTag ID for the component (e.g., ID 2 for Mirrors).
     - Aligns the gripper using visual servoing.
